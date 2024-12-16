@@ -92,7 +92,7 @@ public:
     }
 
     void refresh(const std::span<std::int16_t, N> new_accumulation, const std::span<const std::uint16_t> active_features) const noexcept {
-        constexpr auto chunk = std::min(16ul, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
+        constexpr auto chunk = std::min(16ull, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
         static_assert(N % (chunk * sizeof(__m256i) / sizeof(std::int16_t)) == 0);
         const auto accumulation = span_cast<__m256i>(new_accumulation);
         const auto biases = span_cast<const __m256i>(std::span{biases0});
@@ -107,7 +107,7 @@ public:
     }
 
     void update(const std::span<std::int16_t, N> new_accumulation, const std::span<const std::int16_t, N> prev_accumulation, const std::span<const std::uint16_t> removed_features, const std::span<const std::uint16_t> added_features) const noexcept {
-        constexpr auto chunk = std::min(16ul, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
+        constexpr auto chunk = std::min(16ull, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
         static_assert(N % (chunk * sizeof(__m256i) / sizeof(std::int16_t)) == 0);
         const auto accumulation = span_cast<__m256i>(new_accumulation);
         const auto previous = span_cast<const __m256i>(prev_accumulation);

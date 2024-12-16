@@ -29,7 +29,7 @@ auto find_nnz(const std::span<const std::int32_t, I> input, const std::span<std:
     };
 
     constexpr auto InputSimdWidth = sizeof(__m256i) / sizeof(std::int32_t);
-    constexpr auto ChunkSize = std::max(InputSimdWidth, 8ul);
+    constexpr auto ChunkSize = std::max(InputSimdWidth, 8ull);
     constexpr auto NumChunks = I / ChunkSize;
     constexpr auto InputsPerChunk = ChunkSize / InputSimdWidth;
     constexpr auto OutputsPerChunk = ChunkSize / 8;
