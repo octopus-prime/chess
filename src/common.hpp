@@ -12,6 +12,8 @@
 #include <utility>
 #include <string_view>
 #include <numeric>
+#include <format>
+#include <functional>
 
 using namespace std::literals;
 

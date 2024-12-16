@@ -14,6 +14,7 @@ static_assert(std::input_iterator<bitboard::iterator>);
 static_assert(std::ranges::input_range<bitboard>);
 static_assert(std::ranges::sized_range<bitboard>);
 
+// #include <print>
 // void demo_bitboard() {
 //     constexpr auto bb = "b3f7"_b;
 //     for (square s : bb) {

@@ -7,6 +7,7 @@
 #include <regex>
 #include <map>
 #include <print>
+#include <sstream>
 
 struct uci_interface {
 
@@ -46,7 +47,7 @@ private:
     void setoption(std::string_view args) {
         static const std::regex re("setoption name (\\w+) value (\\w+)");
         std::cmatch m;
-        if (std::regex_match(args.begin(), args.end(), m, re)) {
+        if (std::regex_match(&*args.begin(), &*args.end(), m, re)) {
             options[m[1].str()] = m[2].str();
         }
     }
@@ -74,4 +75,5 @@ int main() {
     ss << "isready\n";
     ss << "quit\n";
     uci.run(ss);
+    // uci.run(std::cin);
 }

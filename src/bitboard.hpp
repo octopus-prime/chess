@@ -6,7 +6,7 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
     struct iterator {
         using iterator_category = std::input_iterator_tag;
         using value_type = square;
-        using difference_type = ssize_t;
+        using difference_type = std::ptrdiff_t;
 
         constexpr iterator() noexcept = default;
 
@@ -22,12 +22,12 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
         }
 
         constexpr bool operator==(std::default_sentinel_t) const noexcept {
-            return value == 0ul;
+            return value == 0ull;
         };
 
         constexpr square operator*() const noexcept {
             auto x = std::countr_zero(value);
-            value ^= 1ul << x;
+            value ^= 1ull << x;
             return static_cast<square_e>(x);
         }
 
@@ -36,13 +36,13 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
     };
 
     constexpr bitboard() noexcept
-        : value{0ul} {}
+        : value{0ull} {}
 
     constexpr bitboard(uint64_t v) noexcept
         : value{v} {}
 
     constexpr bitboard(square s) noexcept
-        : bitboard{1ul << s} {}
+        : bitboard{1ull << s} {}
 
     constexpr bitboard(std::string_view string) noexcept
         : bitboard{std::ranges::fold_left(string | std::views::chunk(2), 0ull, [](auto bb, auto &&chunk) {
@@ -62,7 +62,7 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
     }
 
     constexpr bool empty() const noexcept {
-        return value == 0ul;
+        return value == 0ull;
     }
 
     constexpr size_t size() const noexcept {
@@ -70,7 +70,7 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
     }
 
     constexpr bool operator[](square s) const noexcept {
-        return value & (1ul << s);
+        return value & (1ull << s);
     }
 
     constexpr iterator begin() const noexcept {

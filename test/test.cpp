@@ -8,4 +8,6 @@ int main() {
     test_square();
     test_bitboard();
     test_bitboards();
+
+    // demo_bitboard();
 }
