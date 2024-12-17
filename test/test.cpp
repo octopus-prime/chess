@@ -3,6 +3,7 @@
 #include "test_piece.hpp"
 #include "test_bitboard.hpp"
 #include "test_bitboards.hpp"
+#include "test_move.hpp"
 
 #include "nnue/test_affine_tranform.hpp"
 #include "nnue/test_clipped_relu.hpp"
@@ -14,6 +15,7 @@ int main() {
     test_square();
     test_bitboard();
     test_bitboards();
+    test_move();
 
     nnue::test_clipped_relu();
     nnue::test_sqr_clipped_relu();
