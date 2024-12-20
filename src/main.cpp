@@ -113,7 +113,7 @@ int main() {
 
     const node current {};
     auto time0 = std::chrono::high_resolution_clock::now();
-    std::size_t counter_ = perft<WHITE, true>(current, 6);
+    std::size_t counter_ = perft<WHITE, true>(current, 7);
     auto time1 = std::chrono::high_resolution_clock::now();
     auto time = duration_cast<as_floating_point>(time1 - time0).count();
     std::println("{:7.3f} {:16L} {:16L}", time, counter_, size_t(counter_ / time));
