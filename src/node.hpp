@@ -39,7 +39,13 @@ public:
 
     enum generation_t {all, captures};
 
-    // constexpr node() noexcept = default;
+    constexpr node() noexcept
+    : 
+    occupied_by_side{"12"_r, "78"_r},
+    occupied_by_type{0, "27"_r, "b1g1b8g8"_b, "c1f1c8f8"_b, "a1h1a8h8"_b, "d1d8"_b, "e1e8"_b, 0},
+    castle{"a1h1a8h8"_b}, en_passant{0}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
+    {
+    }
 
     constexpr node(std::span<const bitboard, SIDE_MAX> occupied_by_side, std::span<const bitboard, TYPE_MAX> occupied_by_type, bitboard castle, bitboard en_passant) noexcept
     : castle{castle}, en_passant{en_passant}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
@@ -252,7 +258,7 @@ std::span<move_t> node::generate(std::span<move_t, 256> moves) const noexcept
 
     const auto generate_castle = [&]() noexcept
     {
-        if (side == WHITE)
+        if constexpr (side == WHITE)
         {
             if ((castle & "h1"_b) && !(occupied() & "f1g1"_b) && !(attacked & "e1f1g1"_b))
                 moves[index++] = {move_t::CASTLE_SHORT, "e1"_s, "g1"_s};
@@ -332,7 +338,7 @@ std::span<move_t> node::generate(std::span<move_t, 256> moves) const noexcept
         const bitboard sources = pawn<side>(); // & ~pinned;
         bitboard targets;
 
-        if (side == WHITE)
+        if constexpr (side == WHITE)
         {
             const bitboard push = sources << 8 & ~occupied();
 
@@ -686,7 +692,7 @@ void node::execute(const move_t& move) noexcept
         occupied_by_side[side].flip(squares);
         // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::pawn<side>(move.to());
         dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-        if (side == WHITE)
+        if constexpr (side == WHITE)
         {
             en_passant = to >> 8;
         }
@@ -702,7 +708,7 @@ void node::execute(const move_t& move) noexcept
         occupied_by_side[side].flip(squares);
         // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::pawn<side>(move.to());
         dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-        if (side == WHITE)
+        if constexpr (side == WHITE)
         {
             remove(to >> 8);
         }
