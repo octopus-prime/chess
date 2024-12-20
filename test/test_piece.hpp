@@ -3,12 +3,12 @@
 #include <piece.hpp>
 
 static_assert(sizeof(piece) == 1);
-static_assert(piece{wpawn} == wpawn);
-static_assert(piece{wking} == wking);
-static_assert(piece{bpawn} == bpawn);
-static_assert(piece{bking} == bking);
-static_assert(piece{white, pawn} == wpawn);
-static_assert(piece{black, pawn} == bpawn);
-static_assert(piece{wpawn}.side() == white);
-static_assert(piece{wpawn}.type() == pawn);
-static_assert(piece{wpawn} + 1 == wknight);
+static_assert(piece{WPAWN} == WPAWN);
+static_assert(piece{WKING} == WKING);
+static_assert(piece{BPAWN} == BPAWN);
+static_assert(piece{BKING} == BKING);
+static_assert(piece{WHITE, PAWN} == WPAWN);
+static_assert(piece{BLACK, PAWN} == BPAWN);
+static_assert(piece{WPAWN}.side() == WHITE);
+static_assert(piece{WPAWN}.type() == PAWN);
+static_assert(piece{WPAWN} + 1 == WKNIGHT);

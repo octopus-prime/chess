@@ -27,7 +27,7 @@ private:
     square to_;
 
 public:
-    constexpr move_t(type_t type = KING, square from = a1, square to = a1) noexcept
+    constexpr move_t(type_t type = KING, square from = A1, square to = A1) noexcept
         : type_{type}, from_{from}, to_{to} {}
     constexpr type_t type() const noexcept { return type_; }
     constexpr square from() const noexcept { return from_; }

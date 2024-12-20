@@ -4,12 +4,12 @@
 #include "ut.hpp"
 
 static_assert(sizeof(square) == 1);
-static_assert(square{"a1"} == a1);
-static_assert(square{"h8"} == h8);
+static_assert(square{"a1"} == A1);
+static_assert(square{"h8"} == H8);
 static_assert(square{"b3"} == "b3"_s);
-static_assert(square{f_b, r_3} == "b3"_s);
-static_assert(square{"b3"}.file() == f_b);
-static_assert(square{"b3"}.rank() == r_3);
+static_assert(square{FB, R3} == "b3"_s);
+static_assert(square{"b3"}.file() == FB);
+static_assert(square{"b3"}.rank() == R3);
 static_assert(square{"b3"} + 1 == "c3"_s);
 
 // void demo_square() {

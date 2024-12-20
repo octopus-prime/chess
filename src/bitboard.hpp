@@ -81,6 +81,37 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
         return std::default_sentinel;
     }
 
+    constexpr void set(square square) noexcept
+    {
+        value |= bitboard{square};
+    }
+
+    constexpr void set(bitboard squares) noexcept
+    {
+        value |= squares;
+    }
+
+    constexpr void reset(square square) noexcept
+    {
+        value &= ~bitboard{square};
+    }
+
+    constexpr bitboard& reset(bitboard squares) noexcept
+    {
+        value &= ~squares;
+        return *this;
+    }
+
+    constexpr void flip(square square) noexcept
+    {
+        value ^= bitboard{square};
+    }
+
+    constexpr void flip(bitboard squares) noexcept
+    {
+        value ^= squares;
+    }
+
     constexpr void operator|=(bitboard squares) noexcept {
         value |= squares;
     }

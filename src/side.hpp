@@ -3,11 +3,12 @@
 #include "common.hpp"
 
 enum side_e : int8_t {
-     white, black 
+     WHITE, BLACK 
 };
-constexpr inline size_t side_max = 2;
+constexpr inline size_t SIDE_MAX = 2;
 
 constexpr side_e operator!(side_e side) noexcept { return static_cast<side_e>(1 - side); }
+constexpr side_e operator~(side_e side) noexcept { return static_cast<side_e>(1 - side); }
 
 // struct side {
 //     constexpr side(side_e value) noexcept

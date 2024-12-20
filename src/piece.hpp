@@ -3,34 +3,34 @@
 #include "side.hpp"
 
 enum type_e : int8_t {
-    no_type, 
-    pawn, knight, bishop, rook, queen, king
+    NO_TYPE, 
+    PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING
 };
-constexpr inline size_t type_max = 8;
+constexpr inline size_t TYPE_MAX = 8;
 
 enum piece_e : int8_t {
-    no_piece = no_type,
-    wpawn = pawn, wknight, wbishop, wrook, wqueen, wking,
-    bpawn = pawn + type_max, bknight, bbishop, brook, bqueen, bking
+    NO_PIECE = NO_TYPE,
+    WPAWN = PAWN, WKNIGHT, WBISHOP, WROOK, WQUEEN, WKING,
+    BPAWN = PAWN + TYPE_MAX, BKNIGHT, BBISHOP, BROOK, BQUEEN, BKING
 };
-constexpr inline size_t piece_max = 16;
+constexpr inline size_t PIECE_MAX = 16;
 
 struct piece {
     constexpr piece() noexcept
-        : value{no_piece} {}
+        : value{NO_PIECE} {}
 
     constexpr piece(piece_e value) noexcept
         : value{value} {}
 
     constexpr piece(side_e side, type_e type) noexcept
-        : piece(static_cast<piece_e>(type_max * int{side} + int{type})) {}
+        : piece(static_cast<piece_e>(TYPE_MAX * int{side} + int{type})) {}
 
     constexpr side_e side() const noexcept {
-        return static_cast<side_e>(value / type_max);
+        return static_cast<side_e>(value / TYPE_MAX);
     }
 
     constexpr type_e type() const noexcept {
-        return static_cast<type_e>(value % type_max);
+        return static_cast<type_e>(value % TYPE_MAX);
     }
 
     constexpr operator piece_e() const noexcept {

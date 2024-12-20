@@ -5,7 +5,7 @@
 
 static_assert(sizeof(bitboard) == 8);
 static_assert("b3f7"_b.empty() == false);
-static_assert("b3f7"_b.front() == b3);
+static_assert("b3f7"_b.front() == B3);
 static_assert("b3f7"_b.back() == "f7"_s);
 static_assert("b3f7"_b.size() == 2);
 static_assert(("b"_f & "3"_r) == "b3"_b);

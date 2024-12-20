@@ -16,9 +16,9 @@ void test_bitboards() {
         ut::expect(bitboards::rook_queen("e4"_b, ""_b) == "e1e2e3a4b4c4d4f4g4h4e5e6e7e8"_b);
         ut::expect(bitboards::bishop_queen("e4"_s, ""_b) == "b1h1c2g2d3f3d5f5c6g6b7h7a8"_b);
         ut::expect(bitboards::bishop_queen("e4"_b, ""_b) == "b1h1c2g2d3f3d5f5c6g6b7h7a8"_b);
-        ut::expect(bitboards::pawn<white>("e4"_s) == "d5f5"_b);
-        ut::expect(bitboards::pawn<white>("e4"_b) == "d5f5"_b);
-        ut::expect(bitboards::pawn<black>("e4"_s) == "d3f3"_b);
-        ut::expect(bitboards::pawn<black>("e4"_b) == "d3f3"_b);
+        ut::expect(bitboards::pawn<WHITE>("e4"_s) == "d5f5"_b);
+        ut::expect(bitboards::pawn<WHITE>("e4"_b) == "d5f5"_b);
+        ut::expect(bitboards::pawn<BLACK>("e4"_s) == "d3f3"_b);
+        ut::expect(bitboards::pawn<BLACK>("e4"_b) == "d3f3"_b);
     };
 }
