@@ -783,7 +783,7 @@ node::node(std::string_view fen, side_e& side)
    static const std::regex fen_regex("(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*) ([wb]) ([-KQkq]+) ([-a-h1-8]+)( \\d+)?( \\d+)?");
 
   std::cmatch match;
-  if (!std::regex_search(fen.begin(), fen.end(), match, fen_regex))
+  if (!std::regex_search(&*fen.begin(), &*fen.end(), match, fen_regex))
     throw std::runtime_error("fen not matched by regex");
 
   for (int rank = 0; rank < 8; ++rank) {
