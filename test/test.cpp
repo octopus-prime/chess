@@ -6,6 +6,8 @@
 #include "test_move.hpp"
 #include "test_node.hpp"
 
+#include "test_perft.hpp"
+
 #include "nnue/test_affine_tranform.hpp"
 #include "nnue/test_clipped_relu.hpp"
 #include "nnue/test_mul_clipped_relu.hpp"
@@ -18,6 +20,7 @@ int main() {
     test_bitboards();
     test_move();
     test_node();
+    test_perft();
 
     nnue::test_clipped_relu();
     nnue::test_sqr_clipped_relu();

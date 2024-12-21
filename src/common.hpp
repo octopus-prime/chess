@@ -14,6 +14,8 @@
 #include <numeric>
 #include <format>
 #include <functional>
+#include <regex>
+#include <thread>
 
 using namespace std::literals;
 

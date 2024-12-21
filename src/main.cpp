@@ -111,9 +111,11 @@ std::size_t perft(const node &current, int depth) noexcept
 int main() {
     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-    const node current {};
+    side_e side = WHITE;
+    // const node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
+    const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
     auto time0 = std::chrono::high_resolution_clock::now();
-    std::size_t counter_ = perft<WHITE, true>(current, 7);
+    std::size_t counter_ = perft<WHITE, true>(current, 6);
     auto time1 = std::chrono::high_resolution_clock::now();
     auto time = duration_cast<as_floating_point>(time1 - time0).count();
     std::println("{:7.3f} {:16L} {:16L}", time, counter_, size_t(counter_ / time));
