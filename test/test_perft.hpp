@@ -66,7 +66,7 @@ void test_perft() {
                     size_t count = side == WHITE ? perft<WHITE>(node, depth) : perft<BLACK>(node, depth);
 
                     // std::println("{}: {} {}", match[1].str(), count, expected);
-                    ut::expect(count == expected) << match[1].str();
+                    ut::expect(ut::eq(count, expected)) << match[1].str();
                 }
             });
         }
