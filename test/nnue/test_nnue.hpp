@@ -32,15 +32,15 @@ void test_nnue() {
         // evaluation with refresh
 
         const std::uint16_t active_features[2][32] = { {
-                make_index<WHITE>(SQ_A1, SQ_A1, W_KING),
-                make_index<WHITE>(SQ_A1, SQ_B8, B_KING),
-                make_index<WHITE>(SQ_A1, SQ_C3, W_PAWN),
-                make_index<WHITE>(SQ_A1, SQ_D4, B_ROOK)
+                make_index<WHITE>(A1, A1, WKING),
+                make_index<WHITE>(A1, B8, BKING),
+                make_index<WHITE>(A1, C3, WPAWN),
+                make_index<WHITE>(A1, D4, BROOK)
             }, {
-                make_index<BLACK>(SQ_B8, SQ_A1, W_KING),
-                make_index<BLACK>(SQ_B8, SQ_B8, B_KING),
-                make_index<BLACK>(SQ_B8, SQ_C3, W_PAWN),
-                make_index<BLACK>(SQ_B8, SQ_D4, B_ROOK)
+                make_index<BLACK>(B8, A1, WKING),
+                make_index<BLACK>(B8, B8, BKING),
+                make_index<BLACK>(B8, C3, WPAWN),
+                make_index<BLACK>(B8, D4, BROOK)
             }
         };
 
@@ -59,17 +59,17 @@ void test_nnue() {
         // evaluation with update
 
         const std::uint16_t removed_features[2][3] = { {
-                make_index<WHITE>(SQ_A1, SQ_C3, W_PAWN),
-                make_index<WHITE>(SQ_A1, SQ_D4, B_ROOK)
+                make_index<WHITE>(A1, C3, WPAWN),
+                make_index<WHITE>(A1, D4, BROOK)
             }, {
-                make_index<BLACK>(SQ_B8, SQ_C3, W_PAWN),
-                make_index<BLACK>(SQ_B8, SQ_D4, B_ROOK)
+                make_index<BLACK>(B8, C3, WPAWN),
+                make_index<BLACK>(B8, D4, BROOK)
         }};
 
         const std::uint16_t added_features[2][3] = { {
-                make_index<WHITE>(SQ_A1, SQ_D4, W_PAWN)
+                make_index<WHITE>(A1, D4, WPAWN)
             }, {
-                make_index<BLACK>(SQ_B8, SQ_D4, W_PAWN)
+                make_index<BLACK>(B8, D4, WPAWN)
         }};
 
         nnue.update<WHITE>(accumulator[1], accumulator[0], std::span{removed_features[WHITE]}.first(2), std::span{added_features[WHITE]}.first(1));
