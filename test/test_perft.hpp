@@ -57,7 +57,7 @@ void test_perft() {
                 char epd[256];
                 while (input.read(epd)) {
                     std::cmatch match;
-                    if (!std::regex_search(epd, match, epd_regex))
+                    if (!std::regex_match(epd, match, epd_regex))
                         throw std::runtime_error("broken epd");
                     side_e side;
                     node node {match[1].str(), side};

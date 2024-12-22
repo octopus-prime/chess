@@ -28,8 +28,8 @@ void test_bitboard() {
 
     "bitboard"_test = [] {
         char buffer[72];
-        ut::expect(std::string_view{buffer, std::format_to_n(buffer, 72, "{}", "b3f7"_b).out} == "b3f7"sv);
-        ut::expect(std::string_view{buffer, std::format_to_n(buffer, 72, "{:b}", "b3f7"_b).out} == ""
+        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 72, "{}", "b3f7"_b).out},  "b3f7"sv));
+        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 72, "{:b}", "b3f7"_b).out}, ""
             "00000000\n"
             "00000100\n"
             "00000000\n"
@@ -38,7 +38,7 @@ void test_bitboard() {
             "01000000\n"
             "00000000\n"
             "00000000\n"sv
-        );
+        ));
 
     };
 }

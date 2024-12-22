@@ -19,13 +19,13 @@ void test_node() {
     using ut::operator""_test;
 
     "node"_test = [] {
-        ut::expect(node(std::array{"e2"_b, ""_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b}, 0, 0).attackers<WHITE>() == bitboards::king("e2"_b));
+        ut::expect(ut::eq(node(std::array{"e2"_b, ""_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b}, 0, 0).attackers<WHITE>(), bitboards::king("e2"_b)));
 
-        ut::expect(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>() == bitboards::bishop_queen("e2"_b, 0ull));
-        ut::expect(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>() == bitboards::rook_queen("e2"_b, 0ull));
-        ut::expect(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b}, 0, 0).attackers<BLACK>() == (bitboards::rook_queen("e2"_b, 0ull) | bitboards::bishop_queen("e2"_b, 0ull)));
+        ut::expect(ut::eq(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>(), bitboards::bishop_queen("e2"_b, 0ull)));
+        ut::expect(ut::eq(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>(), bitboards::rook_queen("e2"_b, 0ull)));
+        ut::expect(ut::eq(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, "e2"_b, ""_b, ""_b}, 0, 0).attackers<BLACK>(), bitboards::rook_queen("e2"_b, 0ull) | bitboards::bishop_queen("e2"_b, 0ull)));
 
-        ut::expect(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>() == bitboards::knight("e2"_b));
-        ut::expect(node(std::array{"e2"_b, ""_b}, std::array{""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<WHITE>() == bitboards::pawn<WHITE>("e2"_b));
+        ut::expect(ut::eq(node(std::array{""_b, "e2"_b}, std::array{""_b, ""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<BLACK>(), bitboards::knight("e2"_b)));
+        ut::expect(ut::eq(node(std::array{"e2"_b, ""_b}, std::array{""_b, "e2"_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).attackers<WHITE>(), bitboards::pawn<WHITE>("e2"_b)));
     };
 }

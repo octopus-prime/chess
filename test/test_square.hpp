@@ -25,6 +25,6 @@ void test_square() {
 
     "square"_test = [] {
         char buffer[2];
-        ut::expect(std::string_view{buffer, std::format_to_n(buffer, 2, "{}", "b3"_s).out} == "b3"sv);
+        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 2, "{}", "b3"_s).out}, "b3"sv));
     };
 }
