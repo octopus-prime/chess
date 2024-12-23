@@ -5,8 +5,7 @@
 #include "side.hpp"
 #include "bitboard.hpp"
 #include "bitboards.hpp"
-// #include "hash.hpp"
-// #include "hashes.hpp"
+#include "hashes.hpp"
 #include "move.hpp"
 // #include "nnue.hpp"
 #include "dirty_piece.hpp"
@@ -15,16 +14,9 @@ class node
 {
     bitboard occupied_by_side[SIDE_MAX];
     bitboard occupied_by_type[TYPE_MAX];
-    // bitboard white;
-    // bitboard black;
-    // bitboard king_;
-    // bitboard rook_queen_;
-    // bitboard bishop_queen_;
-    // bitboard knight_;
-    // bitboard pawn_;
     bitboard castle;
     bitboard en_passant;
-    // hash_t hash_;
+    uint64_t hash_;
     const node* parent_;
     const move_t* move_;
     size_t dirty_pieces_size;
@@ -39,13 +31,9 @@ public:
 
     enum generation_t {all, captures};
 
-    constexpr node() noexcept
-    : 
-    occupied_by_side{"12"_r, "78"_r},
-    occupied_by_type{0, "27"_r, "b1g1b8g8"_b, "c1f1c8f8"_b, "a1h1a8h8"_b, "d1d8"_b, "e1e8"_b, 0},
-    castle{"a1h1a8h8"_b}, en_passant{0}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
-    {
-    }
+    // constexpr node() : node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}
+    // {
+    // }
 
     constexpr node(std::span<const bitboard, SIDE_MAX> occupied_by_side, std::span<const bitboard, TYPE_MAX> occupied_by_type, bitboard castle, bitboard en_passant) noexcept
     : castle{castle}, en_passant{en_passant}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
@@ -57,23 +45,11 @@ public:
     node(std::string_view fen, side_e& side);
 
     constexpr node(const node& parent) noexcept
-        : castle{parent.castle}, en_passant{parent.en_passant}, parent_(&parent), move_(nullptr), dirty_pieces_size{0}
+        : castle{parent.castle}, en_passant{parent.en_passant}, hash_{parent.hash_}, parent_(&parent), move_(nullptr), dirty_pieces_size{0}
         {
             std::ranges::copy(parent.occupied_by_side, this->occupied_by_side);
             std::ranges::copy(parent.occupied_by_type, this->occupied_by_type);
         }
-
-    // constexpr node(bitboard white, bitboard black, bitboard king, bitboard rook_queen, bitboard bishop_queen, bitboard knight, bitboard pawn, bitboard castle, bitboard en_passant, hash_t hash) noexcept
-    //     : white(white), black(black), king_(king), rook_queen_(rook_queen), bishop_queen_(bishop_queen), knight_(knight), pawn_(pawn), castle(castle), en_passant(en_passant), hash_(hash), parent_(nullptr), move_(nullptr) {
-    //         nnue.accumulator.computedAccumulation = 0;
-    //         nnue.dirtyPiece.dirtyNum = 0;
-    //     }
-
-    // constexpr node(node& parent) noexcept
-    //     : white(parent.white), black(parent.black), king_(parent.king_), rook_queen_(parent.rook_queen_), bishop_queen_(parent.bishop_queen_), knight_(parent.knight_), pawn_(parent.pawn_), castle(parent.castle), en_passant(0), hash_(parent.hash_), parent_(&parent), move_(nullptr) {
-    //         nnue.accumulator.computedAccumulation = 0;
-    //         nnue.dirtyPiece.dirtyNum = 0;
-    //     }
 
     constexpr const node* parent() const noexcept {
         return parent_;
@@ -140,10 +116,14 @@ public:
         return occupied_by_type[PAWN] & occupied_by_side[side];
     }
 
-    // template <side_e side>
-    // constexpr hash_t hash() const noexcept {
-    //     return side == WHITE ? hash_ ^ castle ^ en_passant :  ~(hash_ ^ castle ^ en_passant);
-    // }
+    template <side_e side>
+    constexpr uint64_t hash() const noexcept {
+        // return hash_;
+        // auto c = hashes::castle(castle);
+        // auto e = hashes::en_passant(en_passant);
+        auto s = hashes::color(side);
+        return hash_ ^ castle ^ en_passant ^ s;
+    }
 
     template <side_e side>
     /*constexpr*/ bitboard attackers() const noexcept;
@@ -446,59 +426,12 @@ void node::execute(const move_t& move) noexcept
         for (type_e type : {QUEEN, ROOK, BISHOP, KNIGHT, PAWN})
             if (occupied_by_type[type] != occupied_by_type[type].reset(to))
             {
+                piece piece{~side, type};
                 dirty_pieces_size = 2;
-                dirty_pieces_data[1] = {move.to(), static_cast<square_e>(64), piece{~side, type}};
+                dirty_pieces_data[1] = {move.to(), static_cast<square_e>(64), piece};
+                hash_ ^= hashes::hash(piece, move.to());
                 break;
             }
-        // if (occupied_by_type[type_e::queen] != occupied_by_type[type_e::queen].reset(to)) {
-        //     // hash_ ^= hashes::knight<~side>(to.find());
-        //     dirty_pieces_size = 2;
-        //     dirty_pieces_data[1].from = move.to();
-        //     dirty_pieces_data[1].to = static_cast<square_e>(64);
-        //     dirty_pieces_data[1].piece = piece{~side, type_e::queen};
-        // }
-
-        // bool r = rook_queen_ != rook_queen_.reset(to);
-        // bool b = bishop_queen_ != bishop_queen_.reset(to);
-        // switch(r + b * 2) {
-        // case 1:
-        //     hash_ ^= hashes::rook<~side>(to.find());
-        //     nnue.dirtyPiece.dirtyNum = 2;
-        //     nnue.dirtyPiece.pc[1] = side == WHITE ? brook : wrook;
-        //     nnue.dirtyPiece.from[1] = move.to();
-        //     nnue.dirtyPiece.to[1] = 64;
-        //     break;
-        // case 2:
-        //     hash_ ^= hashes::bishop<~side>(to.find());
-        //     nnue.dirtyPiece.dirtyNum = 2;
-        //     nnue.dirtyPiece.pc[1] = side == WHITE ? bbishop : wbishop;
-        //     nnue.dirtyPiece.from[1] = move.to();
-        //     nnue.dirtyPiece.to[1] = 64;
-        //     break;
-        // case 3:
-        //     hash_ ^= hashes::queen<~side>(to.find());
-        //     nnue.dirtyPiece.dirtyNum = 2;
-        //     nnue.dirtyPiece.pc[1] = side == WHITE ? bqueen : wqueen;
-        //     nnue.dirtyPiece.from[1] = move.to();
-        //     nnue.dirtyPiece.to[1] = 64;
-        //     break;
-        // default: 
-        //     break;
-        // }
-        // if (knight_ != knight_.reset(to)) {
-        //     hash_ ^= hashes::knight<~side>(to.find());
-        //     nnue.dirtyPiece.dirtyNum = 2;
-        //     nnue.dirtyPiece.pc[1] = side == WHITE ? bknight : wknight;
-        //     nnue.dirtyPiece.from[1] = move.to();
-        //     nnue.dirtyPiece.to[1] = 64;
-        // }
-        // if (pawn_ != pawn_.reset(to)) {
-        //     hash_ ^= hashes::pawn<~side>(to.find());
-        //     nnue.dirtyPiece.dirtyNum = 2;
-        //     nnue.dirtyPiece.pc[1] = side == WHITE ? bpawn : wpawn;
-        //     nnue.dirtyPiece.from[1] = move.to();
-        //     nnue.dirtyPiece.to[1] = 64;
-        // }
         occupied_by_side[~side].reset(to);
         if constexpr (side == WHITE)
         {
@@ -515,21 +448,23 @@ void node::execute(const move_t& move) noexcept
     const bitboard squares{from | to};
     en_passant = 0ull;
 
+    const auto execute = [&](type_e type) noexcept
+    {
+        occupied_by_type[type].flip(squares);
+        occupied_by_side[side].flip(squares);
+        piece piece{side, type};
+        hash_ ^= hashes::hash(piece, move.from()) ^ hashes::hash(piece, move.to());
+        dirty_pieces_data[0] = {move.from(), move.to(), piece};
+    };
+
     const auto execute_king = [&]() noexcept
     {
         remove(to);
-        occupied_by_type[KING].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::king<side>(move.from()) ^ hashes::king<side>(move.to());
-        if constexpr (side == WHITE)
-        {
+        execute(KING);
+        if constexpr (side == WHITE) {
             castle.reset("a1h1"_b);
-            dirty_pieces_data[0] = {move.from(), move.to(), WKING};
-        }
-        else
-        {
+        } else {
             castle.reset("a8h8"_b);
-            dirty_pieces_data[0] = {move.from(), move.to(), BKING};
         }
     };
 
@@ -541,7 +476,7 @@ void node::execute(const move_t& move) noexcept
             occupied_by_type[ROOK].flip("h1f1"_b);
             occupied_by_side[WHITE].flip("e1f1g1h1"_b);
             castle.reset("a1h1"_b);
-            // hash_ ^= hashes::king<side>("e1"_s) ^ hashes::king<side>("g1"_s) ^ hashes::rook<side>("h1"_s) ^ hashes::rook<side>("f1"_s);
+            hash_ ^= hashes::hash(WKING, E1) ^ hashes::hash(WKING, G1) ^ hashes::hash(WROOK, H1) ^ hashes::hash(WROOK, F1);	
             dirty_pieces_size = 2;
             dirty_pieces_data[0] = {"e1"_s, "g1"_s, WKING};
             dirty_pieces_data[1] = {"h1"_s, "f1"_s, WROOK};
@@ -552,7 +487,7 @@ void node::execute(const move_t& move) noexcept
             occupied_by_type[ROOK].flip("h8f8"_b);
             occupied_by_side[BLACK].flip("e8f8g8h8"_b);
             castle.reset("a8h8"_b);
-            // hash_ ^= hashes::king<side>("e8"_s) ^ hashes::king<side>("g8"_s) ^ hashes::rook<side>("h8"_s) ^ hashes::rook<side>("f8"_s);
+            hash_ ^= hashes::hash(BKING, E8) ^ hashes::hash(BKING, G8) ^ hashes::hash(BROOK, H8) ^ hashes::hash(BROOK, F8);	
             dirty_pieces_size = 2;
             dirty_pieces_data[0] = {"e8"_s, "g8"_s, BKING};
             dirty_pieces_data[1] = {"h8"_s, "f8"_s, BROOK};
@@ -567,7 +502,7 @@ void node::execute(const move_t& move) noexcept
             occupied_by_type[ROOK].flip("a1d1"_b);
             occupied_by_side[WHITE].flip("a1c1d1e1"_b);
             castle.reset("a1h1"_b);
-            // hash_ ^= hashes::king<side>("e1"_s) ^ hashes::king<side>("c1"_s) ^ hashes::rook<side>("a1"_s) ^ hashes::rook<side>("d1"_s);
+            hash_ ^= hashes::hash(WKING, E1) ^ hashes::hash(WKING, C1) ^ hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
             dirty_pieces_size = 2;
             dirty_pieces_data[0] = {"e1"_s, "c1"_s, WKING};
             dirty_pieces_data[1] = {"a1"_s, "d1"_s, WROOK};
@@ -578,44 +513,26 @@ void node::execute(const move_t& move) noexcept
             occupied_by_type[ROOK].flip("a8d8"_b);
             occupied_by_side[BLACK].flip("a8c8d8e8"_b);
             castle.reset("a8h8"_b);
-            // hash_ ^= hashes::king<side>("e8"_s) ^ hashes::king<side>("c8"_s) ^ hashes::rook<side>("a8"_s) ^ hashes::rook<side>("d8"_s);
+            hash_ ^= hashes::hash(BKING, E8) ^ hashes::hash(BKING, C8) ^ hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
             dirty_pieces_size = 2;
             dirty_pieces_data[0] = {"e8"_s, "c8"_s, BKING};
             dirty_pieces_data[1] = {"a8"_s, "d8"_s, BROOK};
         }
     };
 
-    const auto execute_knight = [&]() noexcept
-    {
-        remove(to);
-        occupied_by_type[KNIGHT].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::knight<side>(move.from()) ^ hashes::knight<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, KNIGHT}};
-    };
-
     const auto execute_queen = [&]() noexcept
     {
         remove(to);
-        occupied_by_type[QUEEN].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::queen<side>(move.from()) ^ hashes::queen<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, QUEEN}};
+        execute(QUEEN);
     };
 
     const auto execute_rook = [&]() noexcept
     {
         remove(to);
-        occupied_by_type[ROOK].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::rook<side>(move.from()) ^ hashes::rook<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, ROOK}};
-        if constexpr (side == WHITE)
-        {
+        execute(ROOK);
+        if constexpr (side == WHITE) {
             castle.reset(bitboard{"a1h1"_b & from});
-        }
-        else
-        {
+        } else {
             castle.reset(bitboard{"a8h8"_b & from});
         }
     };
@@ -623,68 +540,20 @@ void node::execute(const move_t& move) noexcept
     const auto execute_bishop = [&]() noexcept
     {
         remove(to);
-        occupied_by_type[BISHOP].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::bishop<side>(move.from()) ^ hashes::bishop<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, BISHOP}};
+        execute(BISHOP);
+    };
+
+    const auto execute_knight = [&]() noexcept
+    {
+        remove(to);
+        execute(KNIGHT);
     };
 
     const auto execute_pawn = [&]() noexcept
     {
         remove(to);
-        occupied_by_type[PAWN].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::pawn<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
+        execute(PAWN);
     };
-
-    // const auto execute_promote_queen = [&]() noexcept
-    // {
-    //     remove(to);
-    //     occupied_by_type[PAWN].flip(from);
-    //     occupied_by_type[QUEEN].flip(to);
-    //     occupied_by_side[side].flip(squares);
-    //     // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::queen<side>(move.to());
-    //     dirty_pieces_size = 3;
-    //     dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-    //     dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, QUEEN}};
-    // };
-
-    // const auto execute_promote_rook = [&]() noexcept
-    // {
-    //     remove(to);
-    //     occupied_by_type[PAWN].flip(from);
-    //     occupied_by_type[ROOK].flip(to);
-    //     occupied_by_side[side].flip(squares);
-    //     // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::rook<side>(move.to());
-    //     dirty_pieces_size = 3;
-    //     dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-    //     dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, ROOK}};
-    // };
-
-    // const auto execute_promote_bishop = [&]() noexcept
-    // {
-    //     remove(to);
-    //     occupied_by_type[PAWN].flip(from);
-    //     occupied_by_type[BISHOP].flip(to);
-    //     occupied_by_side[side].flip(squares);
-    //     // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::bishop<side>(move.to());
-    //     dirty_pieces_size = 3;
-    //     dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-    //     dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, BISHOP}};
-    // };
-
-    // const auto execute_promote_knight = [&]() noexcept
-    // {
-    //     remove(to);
-    //     occupied_by_type[PAWN].flip(from);
-    //     occupied_by_type[KNIGHT].flip(to);
-    //     occupied_by_side[side].flip(squares);
-    //     // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::knight<side>(move.to());
-    //     dirty_pieces_size = 3;
-    //     dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-    //     dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, KNIGHT}};
-    // };
 
     const auto execute_promote = [&](type_e type) noexcept
     {
@@ -692,7 +561,7 @@ void node::execute(const move_t& move) noexcept
         occupied_by_type[PAWN].flip(from);
         occupied_by_type[type].flip(to);
         occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::knight<side>(move.to());
+        hash_ ^= hashes::hash(piece{side, PAWN}, move.from()) ^ hashes::hash(piece{side, type}, move.to());
         dirty_pieces_size = 3;
         dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
         dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, type}};
@@ -700,32 +569,20 @@ void node::execute(const move_t& move) noexcept
 
     const auto execute_double_push = [&]() noexcept
     {
-        occupied_by_type[PAWN].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::pawn<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-        if constexpr (side == WHITE)
-        {
+        execute(PAWN);
+        if constexpr (side == WHITE) {
             en_passant = to >> 8;
-        }
-        else
-        {
+        } else {
             en_passant = to << 8;
         }
     };
 
     const auto execute_en_passant = [&]() noexcept
     {
-        occupied_by_type[PAWN].flip(squares);
-        occupied_by_side[side].flip(squares);
-        // hash_ ^= hashes::pawn<side>(move.from()) ^ hashes::pawn<side>(move.to());
-        dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-        if constexpr (side == WHITE)
-        {
+        execute(PAWN);
+        if constexpr (side == WHITE) {
             remove(to >> 8);
-        }
-        else
-        {
+        } else {
             remove(to << 8);
         }
     };
@@ -778,7 +635,7 @@ void node::execute(const move_t& move) noexcept
 }
 
 node::node(std::string_view fen, side_e& side)
-: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}
+: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}, hash_{0ull}
  {
    static const std::regex fen_regex("(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*) ([wb]) ([-KQkq]+) ([-a-h1-8]+)( \\d+)?( \\d+)?");
 
@@ -798,62 +655,62 @@ node::node(std::string_view fen, side_e& side)
         case 'K':
           occupied_by_type[KING] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::king<WHITE>(square);
+          hash_ ^= hashes::hash(WKING, square);
           break;
         case 'k':
           occupied_by_type[KING] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::king<BLACK>(square);
+          hash_ ^= hashes::hash(BKING, square);
           break;
         case 'Q':
           occupied_by_type[QUEEN] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::queen<WHITE>(square);
+          hash_ ^= hashes::hash(WQUEEN, square);
           break;
         case 'q':
           occupied_by_type[QUEEN] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::queen<BLACK>(square);
+          hash_ ^= hashes::hash(BQUEEN, square);
           break;
         case 'R':
           occupied_by_type[ROOK] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::rook<WHITE>(square);
+          hash_ ^= hashes::hash(WROOK, square);
           break;
         case 'r':
           occupied_by_type[ROOK] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::rook<BLACK>(square);
+          hash_ ^= hashes::hash(BROOK, square);
           break;
         case 'B':
           occupied_by_type[BISHOP] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::bishop<WHITE>(square);
+          hash_ ^= hashes::hash(WBISHOP, square);
           break;
         case 'b':
           occupied_by_type[BISHOP] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::bishop<BLACK>(square);
+          hash_ ^= hashes::hash(BBISHOP, square);
           break;
         case 'N':
           occupied_by_type[KNIGHT] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::knight<WHITE>(square);
+          hash_ ^= hashes::hash(WKNIGHT, square);
           break;
         case 'n':
           occupied_by_type[KNIGHT] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::knight<BLACK>(square);
+          hash_ ^= hashes::hash(BKNIGHT, square);
           break;
         case 'P':
           occupied_by_type[PAWN] |= board;
           occupied_by_side[WHITE] |= board;
-        //   hash ^= hashes::pawn<WHITE>(square);
+          hash_ ^= hashes::hash(WPAWN, square);
           break;
         case 'p':
           occupied_by_type[PAWN] |= board;
           occupied_by_side[BLACK] |= board;
-        //   hash ^= hashes::pawn<BLACK>(square);
+          hash_ ^= hashes::hash(BPAWN, square);
           break;
         }
         ++file;
