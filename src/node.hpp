@@ -163,7 +163,8 @@ public:
         auto m = this->move_;
         this->en_passant = en_passant;
         this->move_ = move;
-        // nnue.accumulator.computedAccumulation = 0;
+        // accumulator.computed[0] = false;
+        // accumulator.computed[1] = false;
         return {e, m};
     }
 

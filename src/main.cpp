@@ -5,6 +5,7 @@
 #include "node.hpp"
 #include "evaluator.hpp"
 #include "transposition.hpp"
+#include "history.hpp"
 
 #include <functional>
 #include <iostream>
@@ -181,6 +182,7 @@
 class searcher {
     evaluator evaluator;
     mutable transposition_t transposition{104'395'303};
+    mutable history_t history;
 
     struct result_t {
         std::int32_t score;
@@ -192,6 +194,14 @@ class searcher {
 
 public:
     mutable std::size_t nodes = 0;
+
+    template <side_e side>
+    inline bool
+    try_null(const node& node) const noexcept {
+        return node.occupied<side>().size() > 3
+            && (node.knight<side>() | node.bishop_queen<side>() | node.rook_queen<side>());
+    //		&& !(node.attack<other_tag>() & detail::attacker<king_tag, color_tag>::attack(node.occupy<king_tag, color_tag>()));
+    }
 
     template <side_e Perspective>
     std::int32_t search(const node& position, std::int32_t alpha, std::int32_t beta) const noexcept {
@@ -225,7 +235,7 @@ public:
     }
 
     template <side_e Perspective>
-    result_t search(const node& position, std::int32_t alpha, std::int32_t beta, std::int32_t depth) const noexcept {
+    result_t search(/*const*/ node& position, std::int32_t alpha, std::int32_t beta, std::int32_t depth) const noexcept {
         ++nodes;
 
         const bool check = !position.checkers<Perspective>().empty();
@@ -262,43 +272,70 @@ public:
             best = entry->move;
         }
 
+        if (!check) {
+            int score = position.material<Perspective>() - 120 * depth;
+            if (score > beta)
+            return {beta, best};
+        }
+
+        const std::uint_fast8_t reduction = 1 + depth / 3;
+        const bool skip = entry && entry->depth > depth - reduction && entry->score < beta && entry->flag == flag_t::UPPER;
+        if (depth > reduction  && position.moved() != nullptr  && !check && !skip && try_null<Perspective>(position)) {
+            auto [e, m] = position.execute(bitboard{}, nullptr);
+            int score = -search<~Perspective>(position, -beta, -beta + 1, depth - reduction).score;
+            position.execute(e, m);
+            if (score >= beta) {
+                score = search<Perspective>(position, beta - 1, beta, depth - 1).score;
+                if (score >= beta)
+                    return { beta, {} };
+            }
+        }
+
         std::array<move_t, 256> buffer;
         auto moves = position.generate<Perspective, node::all>(buffer);
 
         if (moves.empty())
             return check ? result_t{MIN, {}} : result_t{0, {}};
 
-        std::ranges::sort(moves, std::greater{}, [&](const move_t& move) {
-            return move == best ? 1000000000 : evaluator.evaluate(position, move);
+        // if (best == move_t{} && depth > 2 && moves.size() > 1)
+        //     best = search<Perspective>(position, alpha, beta, depth - 2).move;
+
+        std::ranges::sort(moves, std::greater{}, [&](const move_t& move) -> std::int64_t {
+            return move == best ? INT64_MAX : (int64_t{evaluator.evaluate(position, move)} << 32) + history.get<Perspective>(move);
         });
 
         bool pv = false;
+        int index = 0;
         for (const auto& move : moves) {
             node successor{position};
             successor.execute<Perspective>(move);
             int score;
-            if (!pv)
+            if (!pv || check)
                 score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
             else {
-                score = -search<~Perspective>(successor, -alpha-1, -alpha, depth - 1).score;
-                if (score > alpha && score < beta)
+                bool reduction = !check && depth >= 3 && index >= moves.size() / 3;
+                score = -search<~Perspective>(successor, -alpha-1, -alpha, depth - 1 - reduction * 2).score;
+                if (score > alpha)// && score < beta)
                     score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
             }
 
             if (score >= beta){
                 transposition.put<Perspective>(position, move, beta, flag_t::LOWER, depth);
+                history.put_good<Perspective>(move, depth);
                 return result_t{beta, move};
             }
             if (score > alpha) {
-                // transposition.put<Perspective>(position, move, score, flag_t::EXACT, depth);
                 alpha = score;
                 best = move;
                 pv = true;
             }
+            ++index;
         }
 
-        if (pv)
+        if (pv) {
             transposition.put<Perspective>(position, best, alpha, flag_t::EXACT, depth);
+            history.put_good<Perspective>(best, depth);
+        }
         else
             transposition.put<Perspective>(position, best, alpha, flag_t::UPPER, depth);
 
@@ -306,7 +343,7 @@ public:
     }
 
     template <side_e Perspective>
-    void search(const node& position, std::int32_t depth) const noexcept {
+    void search(node& position, std::int32_t depth) const noexcept {
         for (std::int32_t iteration = 1; iteration <= depth; ++iteration) {
             auto [score, move] = search<Perspective>(position, MIN, MAX, iteration);
             std::println("{} {} {}", iteration, score, move);
@@ -317,14 +354,14 @@ public:
 int main() {
     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-    constexpr auto depth = 9;
+    constexpr auto depth = 12;
     side_e side;
     searcher searcher{};
-    // const node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
-    // const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
-    // const node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
-    // const node current {"2r3k1/pppR1pp1/4p3/4P1P1/5P2/1P4K1/P1P5/8 w - -"sv, side};
-    const node current {"2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -"sv, side};
+    // node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
+    // node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+    // node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
+    // node current {"2r3k1/pppR1pp1/4p3/4P1P1/5P2/1P4K1/P1P5/8 w - -"sv, side};
+    node current {"2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -"sv, side};
     auto time0 = std::chrono::high_resolution_clock::now();
     // auto score = 
     side == WHITE ? searcher.search<WHITE>(current, depth) : searcher.search<BLACK>(current, depth);
