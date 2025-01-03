@@ -187,6 +187,9 @@ class searcher {
         move_t move;
     };
 
+    constexpr static std::int16_t MIN = -32000;
+    constexpr static std::int16_t MAX = +32000;
+
 public:
     mutable std::size_t nodes = 0;
 
@@ -263,10 +266,10 @@ public:
         auto moves = position.generate<Perspective, node::all>(buffer);
 
         if (moves.empty())
-            return check ? result_t{-1000000, {}} : result_t{0, {}};
+            return check ? result_t{MIN, {}} : result_t{0, {}};
 
         std::ranges::sort(moves, std::greater{}, [&](const move_t& move) {
-            return move == best ? 1000000 : evaluator.evaluate(position, move);
+            return move == best ? 1000000000 : evaluator.evaluate(position, move);
         });
 
         bool pv = false;
@@ -304,10 +307,8 @@ public:
 
     template <side_e Perspective>
     void search(const node& position, std::int32_t depth) const noexcept {
-        constexpr std::int32_t alpha = -1000000;
-        constexpr std::int32_t beta = +1000000;
         for (std::int32_t iteration = 1; iteration <= depth; ++iteration) {
-            auto [score, move] = search<Perspective>(position, alpha, beta, iteration);
+            auto [score, move] = search<Perspective>(position, MIN, MAX, iteration);
             std::println("{} {} {}", iteration, score, move);
         }
     }
