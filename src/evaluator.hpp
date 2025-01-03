@@ -5,7 +5,7 @@
 #include <print>
 
 class evaluator {
-    using NNUE = nnue::small_nnue;
+    using NNUE = nnue::big_nnue;
     using Accumulator = NNUE::Accumulator;
     using Entry = NNUE::Entry;
 

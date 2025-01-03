@@ -4,6 +4,7 @@
 #include "move.hpp"
 #include "node.hpp"
 #include "evaluator.hpp"
+#include "transposition.hpp"
 
 #include <functional>
 #include <iostream>
@@ -179,6 +180,7 @@
 
 class searcher {
     evaluator evaluator;
+    mutable transposition_t transposition{104'395'303};
 
     struct result_t {
         std::int32_t score;
@@ -230,6 +232,33 @@ public:
         if (depth == 0)
             return result_t{search<Perspective>(position, alpha, beta), {}};
 
+        move_t best;
+        const entry_t* const entry = transposition.get<Perspective>(position);
+        if (entry)
+        {
+            if (entry->depth >= depth)
+            {
+                switch (entry->flag)
+                {
+                case flag_t::EXACT:
+                    return {entry->score, entry->move};
+                case flag_t::LOWER:
+                    if (entry->score > alpha)
+                        alpha = entry->score;
+                    break;
+                case flag_t::UPPER:
+                    if (entry->score < beta)
+                        beta = entry->score;
+                    break;
+                default:
+                    break;
+                }
+                if (alpha >= beta)
+                    return {beta, entry->move};
+            }
+            best = entry->move;
+        }
+
         std::array<move_t, 256> buffer;
         auto moves = position.generate<Perspective, node::all>(buffer);
 
@@ -237,22 +266,38 @@ public:
             return check ? result_t{-1000000, {}} : result_t{0, {}};
 
         std::ranges::sort(moves, std::greater{}, [&](const move_t& move) {
-            return evaluator.evaluate(position, move);
+            return move == best ? 1000000 : evaluator.evaluate(position, move);
         });
 
-        move_t best;
+        bool pv = false;
         for (const auto& move : moves) {
             node successor{position};
             successor.execute<Perspective>(move);
-            const int score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
+            int score;
+            if (!pv)
+                score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
+            else {
+                score = -search<~Perspective>(successor, -alpha-1, -alpha, depth - 1).score;
+                if (score > alpha && score < beta)
+                    score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
+            }
 
-            if (score >= beta)
+            if (score >= beta){
+                transposition.put<Perspective>(position, move, beta, flag_t::LOWER, depth);
                 return result_t{beta, move};
+            }
             if (score > alpha) {
+                // transposition.put<Perspective>(position, move, score, flag_t::EXACT, depth);
                 alpha = score;
                 best = move;
+                pv = true;
             }
         }
+
+        if (pv)
+            transposition.put<Perspective>(position, best, alpha, flag_t::EXACT, depth);
+        else
+            transposition.put<Perspective>(position, best, alpha, flag_t::UPPER, depth);
 
         return {alpha, best};
     }
@@ -271,14 +316,17 @@ public:
 int main() {
     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-    side_e side = WHITE;
+    constexpr auto depth = 9;
+    side_e side;
     searcher searcher{};
     // const node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
     // const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
-    const node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
+    // const node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
+    // const node current {"2r3k1/pppR1pp1/4p3/4P1P1/5P2/1P4K1/P1P5/8 w - -"sv, side};
+    const node current {"2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -"sv, side};
     auto time0 = std::chrono::high_resolution_clock::now();
     // auto score = 
-    searcher.search<WHITE>(current, 9);
+    side == WHITE ? searcher.search<WHITE>(current, depth) : searcher.search<BLACK>(current, depth);
     auto time1 = std::chrono::high_resolution_clock::now();
     auto time = duration_cast<as_floating_point>(time1 - time0).count();
     std::println("{:7.3f} {:16L} {:16L}", time, searcher.nodes, size_t(searcher.nodes / time));

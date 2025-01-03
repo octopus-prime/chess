@@ -13,7 +13,7 @@
 
 class node
 {
-    using NNUE = nnue::small_nnue;
+    using NNUE = nnue::big_nnue;
 
     // piece board[64];
     bitboard occupied_by_side[SIDE_MAX];
