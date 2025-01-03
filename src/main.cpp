@@ -3,6 +3,7 @@
 #include "bitboard.hpp"
 #include "move.hpp"
 #include "node.hpp"
+#include "evaluator.hpp"
 
 #include <functional>
 #include <iostream>
@@ -83,95 +84,203 @@
 // }
 
 
-class table {
-    struct entry {
-        uint64_t hash = -1;
-        size_t count = 0;
-        int depth = -1;
+// class table {
+//     struct entry {
+//         uint64_t hash = -1;
+//         size_t count = 0;
+//         int depth = -1;
+//     };
+
+//     std::vector<entry> entries_;
+
+// public:
+//     // constexpr table() : entries_() { /*clear();*/ }
+//     table(std::size_t size) : entries_(size) { /*clear();*/ }
+
+//     // void clear() noexcept {
+//     //     for (entry& e : entries_) {
+//     //         e.hash = -1;
+//     //         e.count = 0;
+//     //         e.depth = 0;
+//     //     }
+//     // }
+
+//     // constexpr bool empty() const noexcept {
+//     //     return entries_.empty();
+//     // }
+
+//     double full() const noexcept {
+//         return 100.0 * std::ranges::count_if(entries_, [](auto&& e) { return e.hash != -1; }) / entries_.size();
+//     }
+
+//     template <side_e side>
+//     void put(const node &current, int depth, std::size_t count) noexcept {
+//         auto hash = current.hash<side>();
+//         entry& e = entries_[hash % entries_.size()];
+//         if (e.depth <= depth && e.count < count)
+//             e = {hash, count, depth};
+//     }
+
+//     template <side_e side>
+//     std::optional<std::size_t> get(const node &current, int depth) const noexcept {
+//         auto hash = current.hash<side>();
+//         const entry& e = entries_[hash % entries_.size()];
+//         return e.hash == hash && e.depth == depth ? std::make_optional(e.count) : std::nullopt;
+//     }
+// };
+
+// table table_{15'485'863};
+
+// template <side_e side, bool divide>
+// std::size_t perft(const node &current, int depth) noexcept
+// {
+//     if (auto&& hit = table_.get<side>(current, depth); hit.has_value())
+//         return hit.value();
+
+//     std::size_t count = 0;
+//     std::array<move_t, 256> buffer;
+//     auto moves = current.generate<side, node::all>(buffer);
+//     for (const auto &move : moves)
+//     {
+//         std::size_t count_ = 0;
+//         if (depth <= 1)
+//             count_ += 1;
+//         else
+//         {
+//             node succ(current);
+//             succ.execute<side>(move);
+//             std::array<move_t, 256> buffer2;
+//             count_ += depth == 2 ? succ.generate<~side, node::all>(buffer2).size() : perft<~side, false>(succ, depth - 1);
+//         }
+//         count += count_;
+//         if constexpr (divide) {
+//             std::println("{}{:16L}", move, count_);
+//         }
+//     }
+
+//     table_.put<side>(current, depth, count);
+
+//     return count;
+// }
+
+// int main() {
+//     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
+
+//     side_e side = WHITE;
+//     // const node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
+//     const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+//     auto time0 = std::chrono::high_resolution_clock::now();
+//     std::size_t counter_ = perft<WHITE, true>(current, 7);
+//     auto time1 = std::chrono::high_resolution_clock::now();
+//     auto time = duration_cast<as_floating_point>(time1 - time0).count();
+//     std::println("{:7.3f} {:16L} {:16L}", time, counter_, size_t(counter_ / time));
+//     std::println("table = {:7.3f}", table_.full());
+// }
+
+class searcher {
+    evaluator evaluator;
+
+    struct result_t {
+        std::int32_t score;
+        move_t move;
     };
 
-    std::vector<entry> entries_;
-
 public:
-    // constexpr table() : entries_() { /*clear();*/ }
-    table(std::size_t size) : entries_(size) { /*clear();*/ }
+    mutable std::size_t nodes = 0;
 
-    // void clear() noexcept {
-    //     for (entry& e : entries_) {
-    //         e.hash = -1;
-    //         e.count = 0;
-    //         e.depth = 0;
-    //     }
-    // }
+    template <side_e Perspective>
+    std::int32_t search(const node& position, std::int32_t alpha, std::int32_t beta) const noexcept {
+        ++nodes;
 
-    // constexpr bool empty() const noexcept {
-    //     return entries_.empty();
-    // }
+        int standing_pat = evaluator.evaluate<Perspective>(position); // * (76898 + position.material<Perspective>()) / 74411;
+        if (standing_pat >= beta)
+            return beta;
+        if (alpha < standing_pat)
+            alpha = standing_pat;
 
-    double full() const noexcept {
-        return 100.0 * std::ranges::count_if(entries_, [](auto&& e) { return e.hash != -1; }) / entries_.size();
+        std::array<move_t, 256> buffer;
+        auto moves = position.generate<Perspective, node::captures>(buffer);
+
+        std::ranges::sort(moves, std::greater{}, [&](const move_t& move) {
+            return evaluator.evaluate(position, move);
+        });
+
+        for (const auto& move : moves) {
+            node successor{position};
+            successor.execute<Perspective>(move);
+            const int score = -search<~Perspective>(successor, -beta, -alpha);
+
+            if (score >= beta)
+                return beta;
+            if (score > alpha)
+                alpha = score;
+        }
+
+        return alpha;
     }
 
-    template <side_e side>
-    void put(const node &current, int depth, std::size_t count) noexcept {
-        auto hash = current.hash<side>();
-        entry& e = entries_[hash % entries_.size()];
-        if (e.depth <= depth && e.count < count)
-            e = {hash, count, depth};
+    template <side_e Perspective>
+    result_t search(const node& position, std::int32_t alpha, std::int32_t beta, std::int32_t depth) const noexcept {
+        ++nodes;
+
+        const bool check = !position.checkers<Perspective>().empty();
+
+        depth += check;
+
+        if (depth == 0)
+            return result_t{search<Perspective>(position, alpha, beta), {}};
+
+        std::array<move_t, 256> buffer;
+        auto moves = position.generate<Perspective, node::all>(buffer);
+
+        if (moves.empty())
+            return check ? result_t{-1000000, {}} : result_t{0, {}};
+
+        std::ranges::sort(moves, std::greater{}, [&](const move_t& move) {
+            return evaluator.evaluate(position, move);
+        });
+
+        move_t best;
+        for (const auto& move : moves) {
+            node successor{position};
+            successor.execute<Perspective>(move);
+            const int score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
+
+            if (score >= beta)
+                return result_t{beta, move};
+            if (score > alpha) {
+                alpha = score;
+                best = move;
+            }
+        }
+
+        return {alpha, best};
     }
 
-    template <side_e side>
-    std::optional<std::size_t> get(const node &current, int depth) const noexcept {
-        auto hash = current.hash<side>();
-        const entry& e = entries_[hash % entries_.size()];
-        return e.hash == hash && e.depth == depth ? std::make_optional(e.count) : std::nullopt;
+    template <side_e Perspective>
+    void search(const node& position, std::int32_t depth) const noexcept {
+        constexpr std::int32_t alpha = -1000000;
+        constexpr std::int32_t beta = +1000000;
+        for (std::int32_t iteration = 1; iteration <= depth; ++iteration) {
+            auto [score, move] = search<Perspective>(position, alpha, beta, iteration);
+            std::println("{} {} {}", iteration, score, move);
+        }
     }
 };
-
-table table_{15'485'863};
-
-template <side_e side, bool divide>
-std::size_t perft(const node &current, int depth) noexcept
-{
-    if (auto&& hit = table_.get<side>(current, depth); hit.has_value())
-        return hit.value();
-
-    std::size_t count = 0;
-    std::array<move_t, 256> buffer;
-    auto moves = current.generate<side, node::all>(buffer);
-    for (const auto &move : moves)
-    {
-        std::size_t count_ = 0;
-        if (depth <= 1)
-            count_ += 1;
-        else
-        {
-            node succ(current);
-            succ.execute<side>(move);
-            std::array<move_t, 256> buffer2;
-            count_ += depth == 2 ? succ.generate<~side, node::all>(buffer2).size() : perft<~side, false>(succ, depth - 1);
-        }
-        count += count_;
-        if constexpr (divide) {
-            std::println("{}{:16L}", move, count_);
-        }
-    }
-
-    table_.put<side>(current, depth, count);
-
-    return count;
-}
 
 int main() {
     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
     side_e side = WHITE;
+    searcher searcher{};
     // const node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
-    const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+    // const node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+    const node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
     auto time0 = std::chrono::high_resolution_clock::now();
-    std::size_t counter_ = perft<WHITE, true>(current, 7);
+    // auto score = 
+    searcher.search<WHITE>(current, 9);
     auto time1 = std::chrono::high_resolution_clock::now();
     auto time = duration_cast<as_floating_point>(time1 - time0).count();
-    std::println("{:7.3f} {:16L} {:16L}", time, counter_, size_t(counter_ / time));
-    std::println("table = {:7.3f}", table_.full());
+    std::println("{:7.3f} {:16L} {:16L}", time, searcher.nodes, size_t(searcher.nodes / time));
+    // std::println("table = {:7.3f}", table_.full());
 }

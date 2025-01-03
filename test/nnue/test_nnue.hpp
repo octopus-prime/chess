@@ -53,8 +53,8 @@ void test_nnue() {
         // std::printf("%d\n", score[WHITE]);
         // std::printf("%d\n", score[BLACK]);
 
-        ut::expect(score[WHITE] == -887);
-        ut::expect(score[BLACK] == 1317);
+        ut::expect(ut::eq(score[WHITE], -1773));
+        ut::expect(ut::eq(score[BLACK], 2204));
 
         // evaluation with update
 
@@ -81,8 +81,8 @@ void test_nnue() {
         // std::printf("%d\n", score[WHITE]);
         // std::printf("%d\n", score[BLACK]);
 
-        ut::expect(score[WHITE] == 135);
-        ut::expect(score[BLACK] == -113);
+        ut::expect(ut::eq(score[WHITE], -3));
+        ut::expect(ut::eq(score[BLACK], 25));
     };
 }
 

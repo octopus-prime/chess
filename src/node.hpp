@@ -9,9 +9,13 @@
 #include "move.hpp"
 // #include "nnue.hpp"
 #include "dirty_piece.hpp"
+#include "nnue/nnue.hpp"
 
 class node
 {
+    using NNUE = nnue::small_nnue;
+
+    // piece board[64];
     bitboard occupied_by_side[SIDE_MAX];
     bitboard occupied_by_type[TYPE_MAX];
     bitboard castle;
@@ -21,10 +25,7 @@ class node
     const move_t* move_;
     size_t dirty_pieces_size;
     dirty_piece dirty_pieces_data[3];
-
-    auto get_dirty_pieces() const noexcept {
-        return std::span{dirty_pieces_data}.first(dirty_pieces_size);
-    }
+    mutable NNUE::Accumulator accumulator;
 
 public:
     // NNUEdata nnue;
@@ -116,6 +117,14 @@ public:
         return occupied_by_type[PAWN] & occupied_by_side[side];
     }
 
+    constexpr bitboard board(type_e type) const noexcept {
+        return occupied_by_type[type];
+    }
+
+    constexpr bitboard board(piece piece) const noexcept {
+        return occupied_by_type[piece.type()] & occupied_by_side[piece.side()];
+    }
+
     template <side_e side>
     constexpr uint64_t hash() const noexcept {
         // return hash_;
@@ -123,6 +132,14 @@ public:
         // auto e = hashes::en_passant(en_passant);
         auto s = hashes::color(side);
         return hash_ ^ castle ^ en_passant ^ s;
+    }
+
+    constexpr auto get_dirty_pieces() const noexcept {
+        return std::span{dirty_pieces_data}.first(dirty_pieces_size);
+    }
+
+    constexpr auto& get_accumulator() const noexcept {
+        return accumulator;
     }
 
     template <side_e side>
@@ -428,7 +445,7 @@ void node::execute(const move_t& move) noexcept
             {
                 piece piece{~side, type};
                 dirty_pieces_size = 2;
-                dirty_pieces_data[1] = {move.to(), static_cast<square_e>(64), piece};
+                dirty_pieces_data[1] = {move.to(), NO_SQUARE, piece};
                 hash_ ^= hashes::hash(piece, move.to());
                 break;
             }
@@ -564,7 +581,7 @@ void node::execute(const move_t& move) noexcept
         hash_ ^= hashes::hash(piece{side, PAWN}, move.from()) ^ hashes::hash(piece{side, type}, move.to());
         dirty_pieces_size = 3;
         dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
-        dirty_pieces_data[2] = {static_cast<square_e>(64), move.to(), piece{side, type}};
+        dirty_pieces_data[2] = {NO_SQUARE, move.to(), piece{side, type}};
     };
 
     const auto execute_double_push = [&]() noexcept
@@ -635,7 +652,7 @@ void node::execute(const move_t& move) noexcept
 }
 
 node::node(std::string_view fen, side_e& side)
-: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}, hash_{0ull}
+: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}, hash_{0ull}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
  {
    static const std::regex fen_regex("(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*) ([wb]) ([-KQkq]+) ([-a-h1-8]+)( \\d+)?( \\d+)?");
 

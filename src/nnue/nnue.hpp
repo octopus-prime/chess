@@ -61,12 +61,14 @@ class basic_nnue {
 
     template <int Perspective>
     void refresh(Accumulator& new_accumulator, const std::span<const std::uint16_t> active_features) const noexcept {
-        features->refresh(std::span{new_accumulator.accumulation[Perspective]}, active_features);
+        // features->refresh(std::span{new_accumulator.accumulation[Perspective]}, active_features);
+        features->refresh(std::span{new_accumulator.accumulation[Perspective]}, std::span{new_accumulator.psqrt_accumulation[Perspective]}, active_features);
     }
 
     template <int Perspective>
     void update(Accumulator& new_accumulator, const Accumulator& prev_accumulator, const std::span<const std::uint16_t> removed_features, const std::span<const std::uint16_t> added_features) const noexcept {
-        features->update(std::span{new_accumulator.accumulation[Perspective]}, std::span{prev_accumulator.accumulation[Perspective]}, removed_features, added_features);
+        // features->update(std::span{new_accumulator.accumulation[Perspective]}, std::span{prev_accumulator.accumulation[Perspective]}, removed_features, added_features);
+        features->update(std::span{new_accumulator.accumulation[Perspective]}, std::span{new_accumulator.psqrt_accumulation[Perspective]}, std::span{prev_accumulator.accumulation[Perspective]}, std::span{prev_accumulator.psqrt_accumulation[Perspective]}, removed_features, added_features);
     }
 
     // template <int Perspective>
@@ -87,7 +89,11 @@ class basic_nnue {
         mul_clipped_relu(std::span{accumulator.accumulation[Perspective]}, std::span{l1clipped}.template first<L1 / 2>());
         mul_clipped_relu(std::span{accumulator.accumulation[1 - Perspective]}, std::span{l1clipped}.template last<L1 / 2>());
 
-        return networks[bucket]->evaluate(std::span{l1clipped} | std::views::as_const) / 16;
+        const auto positional = networks[bucket]->evaluate(std::span{l1clipped} | std::views::as_const);
+        const auto psqt = (accumulator.psqrt_accumulation[Perspective][bucket] - accumulator.psqrt_accumulation[1 - Perspective][bucket]) / 2;
+
+        return (positional + psqt) / 16;
+        // return (125 * psqt + 131 * positional) / (128 * 16);
     }
 };
 
