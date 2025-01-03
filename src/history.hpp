@@ -7,7 +7,7 @@
 
 class history_t {
   uint64_t count_good[2][64][64];
-  uint64_t count_all[2][64][64];
+  // uint64_t count_all[2][64][64];
 
 public:
   history_t() { clear(); }
@@ -17,7 +17,7 @@ public:
       for (int i = 0; i < 64; ++i) {
         for (int j = 0; j < 64; ++j) {
           count_good[k][i][j] = 0;
-          count_all[k][i][j] = 1;
+          // count_all[k][i][j] = 1;
         }
       }
     }
@@ -28,10 +28,10 @@ public:
     count_good[side][move.from()][move.to()] += 1ull << depth;
   }
 
-  template <side_e side>
-  void put_all(const move_t &move, int depth) noexcept {
-    count_all[side][move.from()][move.to()] += 1ull << depth;
-  }
+  // template <side_e side>
+  // void put_all(const move_t &move, int depth) noexcept {
+  //   count_all[side][move.from()][move.to()] += 1ull << depth;
+  // }
 
   template <side_e side> 
   uint64_t get(const move_t &move) const noexcept {

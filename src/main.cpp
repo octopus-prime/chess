@@ -181,7 +181,7 @@
 
 class searcher {
     evaluator evaluator;
-    mutable transposition_t transposition{104'395'303};
+    mutable transposition_t transposition{15'485'863};
     mutable history_t history;
 
     struct result_t {
