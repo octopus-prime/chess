@@ -194,6 +194,8 @@ class searcher {
 
 public:
     mutable std::size_t nodes = 0;
+    mutable move_t best;
+    mutable std::stop_token stop_token;
 
     template <side_e side>
     inline bool
@@ -205,6 +207,9 @@ public:
 
     template <side_e Perspective>
     std::int32_t search(const node& position, std::int32_t alpha, std::int32_t beta) const noexcept {
+        if (stop_token.stop_requested())
+            return {};
+
         ++nodes;
 
         int standing_pat = evaluator.evaluate<Perspective>(position); // * (76898 + position.material<Perspective>()) / 74411;
@@ -225,6 +230,9 @@ public:
             successor.execute<Perspective>(move);
             const int score = -search<~Perspective>(successor, -beta, -alpha);
 
+            if (stop_token.stop_requested())
+                return {};
+
             if (score >= beta)
                 return beta;
             if (score > alpha)
@@ -236,6 +244,9 @@ public:
 
     template <side_e Perspective>
     result_t search(/*const*/ node& position, std::int32_t alpha, std::int32_t beta, std::int32_t depth) const noexcept {
+        if (stop_token.stop_requested())
+            return {};
+
         ++nodes;
 
         const bool check = !position.checkers<Perspective>().empty();
@@ -319,6 +330,9 @@ public:
                     score = -search<~Perspective>(successor, -beta, -alpha, depth - 1).score;
             }
 
+            if (stop_token.stop_requested())
+                return {};
+
             if (score >= beta){
                 transposition.put<Perspective>(position, move, beta, flag_t::LOWER, depth);
                 history.put_good<Perspective>(move, depth);
@@ -344,34 +358,147 @@ public:
 
     template <side_e Perspective>
     void search(node& position, std::int32_t depth) const noexcept {
+        using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
+        auto time0 = std::chrono::high_resolution_clock::now();
         for (std::int32_t iteration = 1; iteration <= depth; ++iteration) {
             auto [score, move] = search<Perspective>(position, MIN, MAX, iteration);
-            std::println("{} {} {}", iteration, score, move);
+            if (stop_token.stop_requested())
+                break;
+            best = move;
+            // std::println("{} {} {}", iteration, score, move);
+            auto time1 = std::chrono::high_resolution_clock::now();
+            auto time = duration_cast<as_floating_point>(time1 - time0).count();
+            std::println("info depth {} seldepth {} multipv 1 score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {}", iteration, 0, score, nodes, size_t(nodes / time), 0, 0, size_t(time * 1000), best);
         }
     }
 };
 
-int main() {
-    using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
+// int main() {
+//     using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-    constexpr auto depth = 12;
+//     constexpr auto depth = 12;
+//     side_e side;
+//     searcher searcher{};
+//     // node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
+//     // node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+//     // node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
+//     // node current {"2r3k1/pppR1pp1/4p3/4P1P1/5P2/1P4K1/P1P5/8 w - -"sv, side};
+//     // node current {"2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -"sv, side};
+//     // node current {"1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - -"sv, side};
+//     // node current {"3r1k2/4npp1/1ppr3p/p6P/P2PPPP1/1NR5/5K2/2R5 w - -"sv, side};
+//     // node current {"2q1rr1k/3bbnnp/p2p1pp1/2pPp3/PpP1P1P1/1P2BNNP/2BQ1PRK/7R b - -"sv, side};
+//     // node current {"rnbqkb1r/p3pppp/1p6/2ppP3/3N4/2P5/PPP1QPPP/R1B1KB1R w KQkq -"sv, side};
+//     node current {"r1b2rk1/2q1b1pp/p2ppn2/1p6/3QP3/1BN1B3/PPP3PP/R4RK1 w - -"sv, side};
+//     auto time0 = std::chrono::high_resolution_clock::now();
+//     // auto score = 
+//     side == WHITE ? searcher.search<WHITE>(current, depth) : searcher.search<BLACK>(current, depth);
+//     auto time1 = std::chrono::high_resolution_clock::now();
+//     auto time = duration_cast<as_floating_point>(time1 - time0).count();
+//     std::println("{:7.3f} {:16L} {:16L}", time, searcher.nodes, size_t(searcher.nodes / time));
+//     // std::println("table = {:7.3f}", table_.full());
+// }
+
+struct uci_interface {
+
+    uci_interface()
+    : options {
+        {"Hash", "1"}
+    }, 
+    commands {
+        {"ucinewgame"sv, std::bind(&uci_interface::ucinewgame, this, std::placeholders::_1)},
+        {"uci"sv, std::bind(&uci_interface::uci, this, std::placeholders::_1)},
+        {"setoption"sv, std::bind(&uci_interface::setoption, this, std::placeholders::_1)},
+        {"isready"sv, std::bind(&uci_interface::isready, this, std::placeholders::_1)},
+        {"position"sv, std::bind(&uci_interface::position, this, std::placeholders::_1)},
+        {"go"sv, std::bind(&uci_interface::go, this, std::placeholders::_1)},
+        {"stop"sv, std::bind(&uci_interface::stop, this, std::placeholders::_1)},
+        {"quit"sv, std::bind(&uci_interface::quit, this, std::placeholders::_1)},
+    } {}
+
+    void run(std::istream& stream) {
+        std::array<char, 1024> buffer;
+        for(;;) {
+            stream.getline(buffer.data(), buffer.size());
+            const std::string_view line{buffer.data()};
+            const auto predicate = [line](const auto& command) { return line.starts_with(command.first); };
+            if (const auto& command = std::ranges::find_if(commands, predicate); command != std::end(commands))
+                command->second(line);
+        }
+    }
+
+private:
+    void uci(std::string_view) {
+        std::println("id name chess");
+        std::println("id author me");
+        std::println("option name Hash type spin default 1 min 1 max 16");
+        std::println("uciok");
+    }
+
+    void setoption(std::string_view args) {
+        static const std::regex re("setoption name (\\w+) value (\\w+)");
+        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
+            options[m[1].str()] = m[2].str();
+        }
+    }
+
+    void isready(std::string_view) {
+        std::println("hash = {}", options["Hash"]);
+        std::println("readyok");
+    }
+
+    void ucinewgame(std::string_view) {
+    }
+
+    void position(std::string_view args) {
+        static const std::regex re("position fen (.*)");
+        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
+            root = node{m[1].str(), side};
+        }
+    }
+
+    void go(std::string_view args) {
+        static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*) movestogo (\\d*)");
+        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
+            search = std::jthread{[&] {
+                constexpr auto depth = 10;
+                (side == WHITE) ? searcher.search<WHITE>(root, depth) : searcher.search<BLACK>(root, depth);
+                std::println("bestmove {}", searcher.best);
+            }};
+            searcher.stop_token = search.get_stop_token();
+        }
+    }
+
+    void stop(std::string_view) {
+        // search.request_stop();
+        if (search.joinable())
+            search.join();
+    }
+
+    void quit(std::string_view args) {
+        stop(args);
+        std::exit(0);
+    }
+
+    std::map<std::string, std::string> options;
+    std::map<std::string_view, std::function<void(std::string_view)>> commands;
+
+    searcher searcher;
+    std::jthread search;
+
     side_e side;
-    searcher searcher{};
-    // node current {"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv, side};
-    // node current {"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
-    // node current {"8/2Nb4/pp6/4rp1p/1Pp1pPkP/PpPpR3/1B1P2N1/1K6 w - -"sv, side};
-    // node current {"2r3k1/pppR1pp1/4p3/4P1P1/5P2/1P4K1/P1P5/8 w - -"sv, side};
-    // node current {"2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -"sv, side};
-    // node current {"1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - -"sv, side};
-    // node current {"3r1k2/4npp1/1ppr3p/p6P/P2PPPP1/1NR5/5K2/2R5 w - -"sv, side};
-    // node current {"2q1rr1k/3bbnnp/p2p1pp1/2pPp3/PpP1P1P1/1P2BNNP/2BQ1PRK/7R b - -"sv, side};
-    // node current {"rnbqkb1r/p3pppp/1p6/2ppP3/3N4/2P5/PPP1QPPP/R1B1KB1R w KQkq -"sv, side};
-    node current {"r1b2rk1/2q1b1pp/p2ppn2/1p6/3QP3/1BN1B3/PPP3PP/R4RK1 w - -"sv, side};
-    auto time0 = std::chrono::high_resolution_clock::now();
-    // auto score = 
-    side == WHITE ? searcher.search<WHITE>(current, depth) : searcher.search<BLACK>(current, depth);
-    auto time1 = std::chrono::high_resolution_clock::now();
-    auto time = duration_cast<as_floating_point>(time1 - time0).count();
-    std::println("{:7.3f} {:16L} {:16L}", time, searcher.nodes, size_t(searcher.nodes / time));
-    // std::println("table = {:7.3f}", table_.full());
+    node root{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", side};
+};
+
+int main() {
+    uci_interface uci;
+    std::stringstream ss;
+    ss << "uci\n";
+    ss << "setoption name Hash value 16\n";
+    ss << "isready\n";
+    ss << "position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 2\n";
+    ss << "go wtime 300000 btime 300000 winc 1000 binc 1000 movestogo 40\n";
+    ss << "stop\n";
+    ss << "quit\n";
+    uci.run(ss);
+    // uci.run(std::cin);
 }

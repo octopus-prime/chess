@@ -41,35 +41,68 @@ struct std::formatter<move_t> {
         return ctx.begin();
     }
     auto format(move_t move, std::format_context& ctx) const {
+        auto out = std::format_to(ctx.out(), "{}{}", move.from(), move.to());
         switch (move.type())
         {
         case move_t::KING:
-            return std::format_to(ctx.out(), "K{}{}", move.from(), move.to());
         case move_t::CASTLE_SHORT:
-            return std::format_to(ctx.out(), "O-O");
         case move_t::CASTLE_LONG:
-            return std::format_to(ctx.out(), "O-O-O");
         case move_t::KNIGHT:
-            return std::format_to(ctx.out(), "N{}{}", move.from(), move.to());
         case move_t::QUEEN:
-            return std::format_to(ctx.out(), "Q{}{}", move.from(), move.to());
         case move_t::ROOK:
-            return std::format_to(ctx.out(), "R{}{}", move.from(), move.to());
         case move_t::BISHOP:
-            return std::format_to(ctx.out(), "B{}{}", move.from(), move.to());
         case move_t::PAWN:
         case move_t::DOUBLE_PUSH:
-            return std::format_to(ctx.out(), "P{}{}", move.from(), move.to());
+            return out;
         case move_t::PROMOTE_QUEEN:
-            return std::format_to(ctx.out(), "P{}{}Q", move.from(), move.to());
+            return std::format_to(out, "q");
         case move_t::PROMOTE_ROOK:
-            return std::format_to(ctx.out(), "P{}{}R", move.from(), move.to());
+            return std::format_to(out, "r");
         case move_t::PROMOTE_BISHOP:
-            return std::format_to(ctx.out(), "P{}{}B", move.from(), move.to());
+            return std::format_to(out, "b");
         case move_t::PROMOTE_KNIGHT:
-            return std::format_to(ctx.out(), "P{}{}N", move.from(), move.to());
+            return std::format_to(out, "n");
         case move_t::EN_PASSANT:
-            return std::format_to(ctx.out(), "P{}{}ep", move.from(), move.to());
+            return out;
         }
     }
 };
+
+// template <>
+// struct std::formatter<move_t> {
+//     constexpr auto parse(std::format_parse_context& ctx) {
+//         return ctx.begin();
+//     }
+//     auto format(move_t move, std::format_context& ctx) const {
+//         switch (move.type())
+//         {
+//         case move_t::KING:
+//             return std::format_to(ctx.out(), "K{}{}", move.from(), move.to());
+//         case move_t::CASTLE_SHORT:
+//             return std::format_to(ctx.out(), "O-O");
+//         case move_t::CASTLE_LONG:
+//             return std::format_to(ctx.out(), "O-O-O");
+//         case move_t::KNIGHT:
+//             return std::format_to(ctx.out(), "N{}{}", move.from(), move.to());
+//         case move_t::QUEEN:
+//             return std::format_to(ctx.out(), "Q{}{}", move.from(), move.to());
+//         case move_t::ROOK:
+//             return std::format_to(ctx.out(), "R{}{}", move.from(), move.to());
+//         case move_t::BISHOP:
+//             return std::format_to(ctx.out(), "B{}{}", move.from(), move.to());
+//         case move_t::PAWN:
+//         case move_t::DOUBLE_PUSH:
+//             return std::format_to(ctx.out(), "P{}{}", move.from(), move.to());
+//         case move_t::PROMOTE_QUEEN:
+//             return std::format_to(ctx.out(), "P{}{}Q", move.from(), move.to());
+//         case move_t::PROMOTE_ROOK:
+//             return std::format_to(ctx.out(), "P{}{}R", move.from(), move.to());
+//         case move_t::PROMOTE_BISHOP:
+//             return std::format_to(ctx.out(), "P{}{}B", move.from(), move.to());
+//         case move_t::PROMOTE_KNIGHT:
+//             return std::format_to(ctx.out(), "P{}{}N", move.from(), move.to());
+//         case move_t::EN_PASSANT:
+//             return std::format_to(ctx.out(), "P{}{}ep", move.from(), move.to());
+//         }
+//     }
+// };
