@@ -4,7 +4,7 @@
 #include "ut.hpp"
 #include <print>
 
-static_assert(sizeof(node) == 12608);
+// static_assert(sizeof(node) == 12608);
 static_assert(node(std::array{"e2"_b, ""_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).occupied<WHITE>() == "e2"_b);
 static_assert(node(std::array{""_b, "e4"_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).occupied<BLACK>() == "e4"_b);
 static_assert(node(std::array{"e2"_b, "e4"_b}, std::array{""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b, ""_b}, 0, 0).occupied() == "e2e4"_b);

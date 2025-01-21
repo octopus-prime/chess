@@ -18,13 +18,11 @@ struct entry_t {
 	uint8_t	depth;	//1
 };
 
-constexpr int prime = 99527; // 997
-
 class transposition_t {
 	std::vector<entry_t> entries;
 
 public:
-	transposition_t(size_t size) : entries(size /*+ prime*/) {
+	transposition_t(size_t size) : entries(size) {
 	}
 
 	void clear() noexcept {
@@ -45,5 +43,9 @@ public:
 			return &entry;
 		else
 			return nullptr;
+	}
+
+	size_t full() const noexcept {
+		return 1000.0 * std::ranges::count_if(entries, [](auto&& e){ return e.flag != UNKNOWN; }) / entries.size();
 	}
 };

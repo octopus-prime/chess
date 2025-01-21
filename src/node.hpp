@@ -157,6 +157,9 @@ public:
     template <side_e side>
     void execute(const move_t& move) noexcept;
 
+    template <side_e side>
+    void execute(std::string_view move);
+
     // template <side_t side>
     std::pair<bitboard, const move_t*> execute(bitboard en_passant, const move_t* move) noexcept {
         auto e = this->en_passant;
@@ -616,9 +619,6 @@ void node::execute(const move_t& move) noexcept
     case move_t::CASTLE_LONG:
         execute_castle_long();
         break;
-    case move_t::KNIGHT:
-        execute_knight();
-        break;
     case move_t::QUEEN:
         execute_queen();
         break;
@@ -627,6 +627,9 @@ void node::execute(const move_t& move) noexcept
         break;
     case move_t::BISHOP:
         execute_bishop();
+        break;
+    case move_t::KNIGHT:
+        execute_knight();
         break;
     case move_t::PAWN:
         execute_pawn();
@@ -650,6 +653,63 @@ void node::execute(const move_t& move) noexcept
         execute_en_passant();
         break;
     }
+}
+
+template <side_e side>
+void node::execute(std::string_view move_) {
+    static const std::regex regex("([a-h][1-8])([a-h][1-8])([qrbn]?)");
+    std::cmatch match;
+    if (!std::regex_search(&*move_.begin(), &*move_.end(), match, regex))
+        throw std::runtime_error("move not matched by regex");
+    square from{match[1].str()};
+    square to{match[2].str()};
+    move_t move{};
+    if (match[3].matched && match[3].length() > 0) {
+        switch (match[3].str()[0]) {
+        case 'q':
+            move = {move_t::PROMOTE_QUEEN, from, to};
+            break;
+        case 'r':
+            move = {move_t::PROMOTE_ROOK, from, to};
+            break;
+        case 'b':
+            move = {move_t::PROMOTE_BISHOP, from, to};
+            break;
+        case 'n':
+            move = {move_t::PROMOTE_KNIGHT, from, to};
+            break;
+        default:
+            break;
+        }
+    } else if (occupied_by_type[KING] & bitboard{from}) {
+        if (from.file() - to.file() == 2)
+            move = {move_t::CASTLE_LONG, from, to};
+        else if (to.file() - from.file() == 2)
+            move = {move_t::CASTLE_SHORT, from, to};
+        else
+            move = {move_t::KING, from, to};
+    } else if (occupied_by_type[QUEEN] & occupied_by_side[side] & bitboard{from}) {
+        move = {move_t::QUEEN, from, to};
+    } else if (occupied_by_type[ROOK] & occupied_by_side[side] & bitboard{from}) {
+        move = {move_t::ROOK, from, to};
+    } else if (occupied_by_type[BISHOP] & occupied_by_side[side] & bitboard{from}) {
+        move = {move_t::BISHOP, from, to};
+    } else if (occupied_by_type[KNIGHT] & occupied_by_side[side] & bitboard{from}) {
+        move = {move_t::KNIGHT, from, to};
+    } else if (occupied_by_type[PAWN] & occupied_by_side[side] & bitboard{from}) {
+        // if (occupied_by_type[PAWN] & occupied_by_side[~side] & bitboard{to} == en_passant) {
+        if (bitboard{to} == en_passant) {
+            move = {move_t::EN_PASSANT, from, to};
+        } else if (std::abs(from.rank() - to.rank()) == 2) {
+            move = {move_t::DOUBLE_PUSH, from, to};
+        } else {
+            move = {move_t::PAWN, from, to};
+        }
+    } else {
+        throw std::runtime_error("move not matched by regex");
+    }
+
+    execute<side>(move);
 }
 
 node::node(std::string_view fen, side_e& side)
