@@ -32,9 +32,10 @@ public:
 
     enum generation_t {all, captures};
 
-    // constexpr node() : node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}
-    // {
-    // }
+    constexpr node() noexcept
+        : castle{0}, en_passant{0}, hash_{0}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
+    {
+    }
 
     constexpr node(std::span<const bitboard, SIDE_MAX> occupied_by_side, std::span<const bitboard, TYPE_MAX> occupied_by_type, bitboard castle, bitboard en_passant) noexcept
     : castle{castle}, en_passant{en_passant}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}

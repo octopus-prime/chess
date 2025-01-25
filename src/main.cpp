@@ -19,7 +19,7 @@
 
 class searcher {
     evaluator evaluator;
-    mutable transposition_t transposition{99527};//15'485'863};
+    mutable transposition_t transposition{1'000'037};
     mutable history_t history;
 
     struct result_t {
@@ -66,8 +66,8 @@ public:
 
         ++nodes;
 
-        int standing_pat = evaluator.evaluate<Perspective>(position) * (76898 + position.material<Perspective>()) / 74411;
-        // int standing_pat = (2 * position.material<Perspective>() + evaluator.evaluate<Perspective>(position)) / 2;// & ~15;
+        int standing_pat = evaluator.evaluate<Perspective>(position) * (76898 + position.material<Perspective>() * 2) / 74411;
+        // int standing_pat = (position.material<Perspective>() + evaluator.evaluate<Perspective>(position)) / 2;// & ~15;
         // int standing_pat = position.material<Perspective>() + evaluator.evaluate<Perspective>(position) / 4;
         // int standing_pat = (position.material<Perspective>() + evaluator.evaluate<Perspective>(position) / 2) / 2;
         if (standing_pat >= beta)
@@ -192,6 +192,7 @@ public:
 
         std::ranges::sort(moves, std::greater{}, [&](const move_t& move) -> std::int64_t {
             return move == best ? INT64_MAX : (int64_t{evaluator.evaluate(position, move)} << 32) + history.get<Perspective>(move);
+            // return move == best ? INT64_MAX : int64_t{evaluator.evaluate(position, move)} + history.get<Perspective>(move);
         });
 
         bool pv = false;
@@ -221,9 +222,9 @@ public:
                 alpha = score;
                 best = move;
                 pv = true;
-                if (height == 0)
-                    // std::println("info depth {} seldepth {} score cp {} nodes {} pv {}", depth, max_height, score, nodes, best);
-                    std::println("info depth {} seldepth {} score cp {} pv {}", depth, max_height, score, best);
+                // if (height == 0)
+                //     // std::println("info depth {} seldepth {} score cp {} nodes {} pv {}", depth, max_height, score, nodes, best);
+                //     std::println("info depth {} seldepth {} score cp {} pv {}", depth, max_height, score, best);
             }
             ++index;
         }
@@ -242,15 +243,34 @@ public:
     void search(node& position, std::int32_t depth) const noexcept {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
         auto time0 = std::chrono::high_resolution_clock::now();
+        int32_t score = search<Perspective>(position, MIN, MAX, 0);
         for (std::int32_t iteration = 1; iteration <= depth; ++iteration) {
-            auto [score, move] = search<Perspective>(position, MIN, MAX, 0, iteration);
+            result_t result;
+            // int32_t score;
+            // move_t move;
+            // auto [score, move] = search<Perspective>(position, MIN, MAX, 0, iteration);
+            result = search<Perspective>(position, score - 100, score + 100, 0, iteration);
             if (stop_token.stop_requested())
                 break;
-            best = move;
+            if (result.score <= score - 100) {
+                auto time1 = std::chrono::high_resolution_clock::now();
+                auto time = duration_cast<as_floating_point>(time1 - time0).count();
+                std::println("info depth {}- seldepth {} score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {}", iteration, max_height, result.score, nodes, size_t(nodes / time), transposition.full(), 0, size_t(time * 1000), best);
+                result = search<Perspective>(position, MIN, result.score, 0, iteration);
+            } else if (result.score >= score + 100) {
+                auto time1 = std::chrono::high_resolution_clock::now();
+                auto time = duration_cast<as_floating_point>(time1 - time0).count();
+                std::println("info depth {}+ seldepth {} score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {}", iteration, max_height, result.score, nodes, size_t(nodes / time), transposition.full(), 0, size_t(time * 1000), best);
+                result = search<Perspective>(position, result.score, MAX, 0, iteration);
+            }
+            if (stop_token.stop_requested())
+                break;
+            best = result.move;
+            score = result.score;
             // std::println("{} {} {}", iteration, score, move);
             auto time1 = std::chrono::high_resolution_clock::now();
             auto time = duration_cast<as_floating_point>(time1 - time0).count();
-            std::println("info depth {} seldepth {} multipv 1 score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {}", iteration, max_height, score, nodes, size_t(nodes / time), transposition.full(), 0, size_t(time * 1000), best);
+            std::println("info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} tbhits {} time {} pv {}", iteration, max_height, result.score, nodes, size_t(nodes / time), transposition.full(), 0, size_t(time * 1000), best);
             // std::flush(std::cout);
             std::fflush(stdout);
 
@@ -278,7 +298,7 @@ struct uci_interface {
     } {}
 
     void run(std::istream& stream) {
-        std::array<char, 4024> buffer;
+        std::array<char, 4096> buffer;
         for(;;) {
             stream.getline(buffer.data(), buffer.size());
             const std::string_view line{buffer.data()};
@@ -309,7 +329,8 @@ private:
     }
 
     void ucinewgame(std::string_view) {
-        root = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+        nodes[0] = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+        root = &nodes[0];
     }
 
     // void position(std::string_view args) {
@@ -338,16 +359,35 @@ private:
     //     }
     // }
 
+    // void position(std::string_view args) {
+    //     static const std::regex re("position startpos moves (.*)");
+    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
+    //         // std::println("xxxxx positioning matched");
+    //         root = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+    //         if (m[1].matched) {
+    //             for (auto x : std::views::split(m[1].str(), ' ')) {
+    //                 std::string_view v {x};
+    //                 // std::println("xxxxx executing '{}'", v);
+    //                 (side == WHITE) ? root.execute<WHITE>(v) : root.execute<BLACK>(v);
+    //                 side = ~side;
+    //             }
+    //         }
+    //     }
+    // }
+
     void position(std::string_view args) {
         static const std::regex re("position startpos moves (.*)");
         if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
             // std::println("xxxxx positioning matched");
-            root = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+            nodes[0] = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
+            root = &nodes[0];
             if (m[1].matched) {
-                for (auto x : std::views::split(m[1].str(), ' ')) {
+                for (auto [i, x] : std::views::enumerate(std::views::split(m[1].str(), ' '))) {
+                    root = &nodes[i + 1];
+                    *root = nodes[i];
                     std::string_view v {x};
                     // std::println("xxxxx executing '{}'", v);
-                    (side == WHITE) ? root.execute<WHITE>(v) : root.execute<BLACK>(v);
+                    (side == WHITE) ? root->execute<WHITE>(v) : root->execute<BLACK>(v);
                     side = ~side;
                 }
             }
@@ -355,16 +395,20 @@ private:
     }
 
     void go(std::string_view args) {
-        // static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*) (movestogo (\\d*))?");
-        static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*).*");
+        static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*)( movestogo (\\d*))?");
         if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
             auto timeleft = std::stoll(m[side == WHITE ? 1 : 2].str());
-            // auto movestogo = std::stoi(m[5].str());
-            auto timetogo = timeleft * 4 / 100;
+            auto timeinc = std::stoll(m[side == WHITE ? 3 : 4].str());
+            long timetogo = timeinc;
+            if (m[6].matched) {
+                auto movestogo = std::stoll(m[6].str()) + 1;
+                timetogo += timeleft / movestogo;
+            } else
+                timetogo += timeleft * 5 / 100;
             searcher.clear();
             search = std::jthread{[&] {
                 constexpr auto depth = 100;
-                (side == WHITE) ? searcher.search<WHITE>(root, depth) : searcher.search<BLACK>(root, depth);
+                (side == WHITE) ? searcher.search<WHITE>(*root, depth) : searcher.search<BLACK>(*root, depth);
                 std::println("bestmove {}", searcher.best);
                 std::fflush(stdout);
             }};
@@ -398,7 +442,10 @@ private:
     std::jthread timer;
 
     side_e side;
-    node root{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", side};
+    // node root{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", side};
+
+    node nodes[1024];
+    node* root;
 };
 
 int main() {
@@ -457,5 +504,43 @@ Tech (average nodes, depths, time/m per move, others per game), counted for comp
   6. Dragon 4.6          24660K     2618404     12.3      9.4     65.4    616.1
   7. Nejmet_3.07         14226K     1489213     11.8      9.6     60.6    578.7
      all ---          -910782177699K-98840581839556     14.6      9.4     62.7    591.2
+
+=============================================================================
+
+Result:
+-----------------------------------------------------------------------------
+  #  name             games    wins   draws  losses   score    elo    +    -
+  1. Spike 1.4           12       7       4       1       9    126  144  127
+  2. chess               12       6       6       0       9    113  136  122
+  3. Dragon 4.6          12       4       4       4       6     11  131  130
+  4. SOS 5 for Arena     12       4       4       4       6      1  132  133
+  5. Nejmet_3.07         12       4       2       6       5    -33  135  141
+  6. AnMon 5.75          12       2       4       6       4    -85  128  139
+  7. Hermann 2.8         12       2       2       8       3   -132  134  156
+
+Cross table:
+-----------------------------------------------------------------------------
+  #  name                score   games         1         2         3         4         5         6         7
+  1. Spike 1.4               9      12         x       0.5       1.5       1.5       1.5       2.0       2.0
+  2. chess                   9      12       1.5         x       1.0       1.5       1.5       1.5       2.0
+  3. Dragon 4.6              6      12       0.5       1.0         x       0.0       1.0       1.5       2.0
+  4. SOS 5 for Arena         6      12       0.5       0.5       2.0         x       2.0       0.5       0.5
+  5. Nejmet_3.07             5      12       0.5       0.5       1.0       0.0         x       1.0       2.0
+  6. AnMon 5.75              4      12       0.0       0.5       0.5       1.5       1.0         x       0.5
+  7. Hermann 2.8             3      12       0.0       0.0       0.0       1.5       0.0       1.5         x
+
+Tech:
+-----------------------------------------------------------------------------
+
+Tech (average nodes, depths, time/m per move, others per game), counted for computing moves only, ignored moves with zero nodes:
+  #  name               nodes/m         NPS  depth/m   time/m    moves     time   #fails
+  1. Spike 1.4           24104K     2265159     21.4     10.6     53.5    569.3         
+  2. chess                2089K      230216     11.6      9.1     70.8    642.8         
+  3. Dragon 4.6          23605K     2572155     12.7      9.2     71.8    658.5         
+  4. SOS 5 for Arena     18599K     2032756     19.6      9.1     64.6    590.9         
+  5. Nejmet_3.07         13104K     1442564     12.6      9.1     62.5    567.7        1
+  6. AnMon 5.75       1683717221344K171871181196117     14.0      9.8     65.5    641.7         
+  7. Hermann 2.8         14604K     1487810     13.3      9.8     61.5    603.7         
+     all ---          239241869434K25799853002468     14.8      9.5     64.3    610.7        1
 
 */
