@@ -32,7 +32,7 @@ public:
 	template <side_e side>
 	void put(const node& node, move_t move, int16_t score, flag_t flag, uint8_t depth) noexcept {
 		entry_t& entry = entries[node.hash<side>() % entries.size()];
-		if ((depth > entry.depth) || (depth == entry.depth && score > entry.score))
+		if ((depth >= entry.depth))// || (depth == entry.depth && score > entry.score))
 			entry = entry_t{node.hash<side>(), move, score, flag, depth};
 	}
 

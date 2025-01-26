@@ -68,6 +68,19 @@ struct std::formatter<move_t> {
     }
 };
 
+template <>
+struct std::formatter<std::span<move_t>> {
+    constexpr auto parse(std::format_parse_context& ctx) {
+        return ctx.begin();
+    }
+    auto format(std::span<move_t> moves, std::format_context& ctx) const {
+        auto out = ctx.out();
+        for (const auto& move : moves)
+            out = std::format_to(out, " {}", move);
+        return out;
+    }
+};
+
 // template <>
 // struct std::formatter<move_t> {
 //     constexpr auto parse(std::format_parse_context& ctx) {
