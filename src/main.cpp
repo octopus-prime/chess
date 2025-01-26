@@ -467,7 +467,7 @@ private:
     side_e side;
     // node root{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", side};
 
-    node nodes[1024];
+    std::vector<node> nodes{1024};
     node* root;
 };
 
