@@ -25,6 +25,7 @@ class node
     const move_t* move_;
     size_t dirty_pieces_size;
     dirty_piece dirty_pieces_data[3];
+    size_t rule50;
     mutable NNUE::Accumulator accumulator;
 
 public:
@@ -33,7 +34,7 @@ public:
     enum generation_t {all, captures};
 
     constexpr node() noexcept
-        : castle{0}, en_passant{0}, hash_{0}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
+        : castle{0}, en_passant{0}, hash_{0}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}, rule50{0}
     {
     }
 
@@ -47,7 +48,7 @@ public:
     node(std::string_view fen, side_e& side);
 
     constexpr node(const node& parent) noexcept
-        : castle{parent.castle}, en_passant{parent.en_passant}, hash_{parent.hash_}, parent_(&parent), move_(nullptr), dirty_pieces_size{0}
+        : castle{parent.castle}, en_passant{parent.en_passant}, hash_{parent.hash_}, parent_(&parent), move_(nullptr), dirty_pieces_size{0}, rule50{parent.rule50 + 1}
         {
             std::ranges::copy(parent.occupied_by_side, this->occupied_by_side);
             std::ranges::copy(parent.occupied_by_type, this->occupied_by_type);
@@ -137,6 +138,10 @@ public:
 
     constexpr auto get_dirty_pieces() const noexcept {
         return std::span{dirty_pieces_data}.first(dirty_pieces_size);
+    }
+
+    constexpr size_t get_rule50() const noexcept {
+        return rule50;
     }
 
     constexpr auto& get_accumulator() const noexcept {
@@ -452,6 +457,7 @@ void node::execute(const move_t& move) noexcept
                 dirty_pieces_size = 2;
                 dirty_pieces_data[1] = {move.to(), NO_SQUARE, piece};
                 hash_ ^= hashes::hash(piece, move.to());
+                rule50 = 0;
                 break;
             }
         occupied_by_side[~side].reset(to);
@@ -575,6 +581,7 @@ void node::execute(const move_t& move) noexcept
     {
         remove(to);
         execute(PAWN);
+        rule50 = 0;
     };
 
     const auto execute_promote = [&](type_e type) noexcept
@@ -587,6 +594,7 @@ void node::execute(const move_t& move) noexcept
         dirty_pieces_size = 3;
         dirty_pieces_data[0] = {move.from(), move.to(), piece{side, PAWN}};
         dirty_pieces_data[2] = {NO_SQUARE, move.to(), piece{side, type}};
+        rule50 = 0;
     };
 
     const auto execute_double_push = [&]() noexcept
@@ -597,6 +605,7 @@ void node::execute(const move_t& move) noexcept
         } else {
             en_passant = to << 8;
         }
+        rule50 = 0;
     };
 
     const auto execute_en_passant = [&]() noexcept
@@ -607,6 +616,7 @@ void node::execute(const move_t& move) noexcept
         } else {
             remove(to << 8);
         }
+        rule50 = 0;
     };
 
     switch (move.type())
@@ -714,7 +724,7 @@ void node::execute(std::string_view move_) {
 }
 
 node::node(std::string_view fen, side_e& side)
-: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}, hash_{0ull}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}
+: occupied_by_side{0ull, 0ull}, occupied_by_type{0ull, 0ull, 0ull, 0ull, 0ull}, castle{0ull}, en_passant{0ull}, hash_{0ull}, parent_{nullptr}, move_{nullptr}, dirty_pieces_size{0}, rule50{0}
  {
    static const std::regex fen_regex("(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*)/(.*) ([wb]) ([-KQkq]+) ([-a-h1-8]+)( \\d+)?( \\d+)?");
 
@@ -818,4 +828,5 @@ node::node(std::string_view fen, side_e& side)
   if (match[11].compare("-")) {
     en_passant = bitboard{match[11].str()};
   }
+  // todo: rule50
 }

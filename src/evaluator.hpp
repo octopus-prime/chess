@@ -148,6 +148,8 @@ public:
     std::int32_t evaluate(const node& position) const noexcept {
         prepare<WHITE, true>(position);
         prepare<BLACK, true>(position);
-        return nnue.evaluate<Perspective>(position.get_accumulator(), position.occupied().size());// & ~15;
+        auto v = nnue.evaluate<Perspective>(position.get_accumulator(), position.occupied().size());// & ~15;
+        // v -= v * position.get_rule50() / 212;
+        return v;
     }
 };
