@@ -139,10 +139,13 @@ public:
             std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_add_epi32);
     }
 
-    void initialize(const std::span<std::int16_t, N> new_accumulation) const noexcept {
+    void initialize(const std::span<std::int16_t, N> new_accumulation, const std::span<std::int32_t, 8> new__psqrt_accumulation) const noexcept {
         const auto accumulation = span_cast<__m256i>(new_accumulation);
         const auto biases = span_cast<const __m256i>(std::span{biases0});
         std::ranges::copy(biases, accumulation.begin());
+
+        const auto psqrt_accumulation = span_cast<__m256i>(new__psqrt_accumulation);
+        std::ranges::fill(psqrt_accumulation, _mm256_setzero_si256());
     }
 };
 

@@ -112,6 +112,10 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
         value ^= squares;
     }
 
+    constexpr bitboard operator~() const noexcept {
+        return ~value;
+    }
+
     constexpr void operator|=(bitboard squares) noexcept {
         value |= squares;
     }
@@ -132,6 +136,26 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
     uint64_t value;
 };
 
+constexpr bitboard operator|(bitboard lhs, bitboard rhs) noexcept {
+    return bitboard{static_cast<uint64_t>(lhs) | static_cast<uint64_t>(rhs)};
+}
+
+constexpr bitboard operator&(bitboard lhs, bitboard rhs) noexcept {
+    return bitboard{static_cast<uint64_t>(lhs) & static_cast<uint64_t>(rhs)};
+}
+
+constexpr bitboard operator^(bitboard lhs, bitboard rhs) noexcept {
+    return bitboard{static_cast<uint64_t>(lhs) ^ static_cast<uint64_t>(rhs)};
+}
+
+constexpr bitboard operator<<(bitboard lhs, std::integral auto shift) noexcept {
+    return bitboard{static_cast<uint64_t>(lhs) << shift};
+}
+
+constexpr bitboard operator>>(bitboard lhs, std::integral auto shift) noexcept {
+    return bitboard{static_cast<uint64_t>(lhs) >> shift};
+}
+
 constexpr bitboard operator""_b(const char *data, size_t length) {
     return std::string_view{data, length};
 }
@@ -139,13 +163,13 @@ constexpr bitboard operator""_b(const char *data, size_t length) {
 constexpr bitboard operator""_f(const char *data, size_t length) noexcept {
     constexpr auto mask = "a1a2a3a4a5a6a7a8"_b;
     const auto view = std::string_view{data, length};
-    return std::transform_reduce(view.begin(), view.end(), 0ull, std::bit_or{}, [mask](char ch) { return mask << (ch - 'a'); });
+    return std::transform_reduce(view.begin(), view.end(), bitboard{}, std::bit_or{}, [mask](char ch) { return mask << (ch - 'a'); });
 }
 
 constexpr bitboard operator""_r(const char *data, size_t length) noexcept {
     constexpr auto mask = "a1b1c1d1e1f1g1h1"_b;
     const auto view = std::string_view{data, length};
-    return std::transform_reduce(view.begin(), view.end(), 0ull, std::bit_or{}, [mask](char ch) { return mask << (ch - '1') * 8; });
+    return std::transform_reduce(view.begin(), view.end(), bitboard{}, std::bit_or{}, [mask](char ch) { return mask << (ch - '1') * 8; });
 }
 
 template <>

@@ -133,7 +133,7 @@ public:
         // auto c = hashes::castle(castle);
         // auto e = hashes::en_passant(en_passant);
         auto s = hashes::color(side);
-        return hash_ ^ castle ^ en_passant ^ s;
+        return hash_ ^ uint64_t{castle} ^ uint64_t{en_passant} ^ uint64_t{s};
     }
 
     constexpr auto get_dirty_pieces() const noexcept {

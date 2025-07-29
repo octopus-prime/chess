@@ -105,12 +105,12 @@ void affine_tranform(const std::span<const std::uint8_t, I> input, const std::sp
 template <std::size_t I, std::size_t O>
     requires(I % sizeof(__m256i) == 0)
 void affine_tranform(const std::span<const std::uint8_t, I> input, const std::span<const std::int8_t[I], O> weights, const std::span<const std::int32_t, O> biases, const std::span<std::int32_t, O> output) noexcept {
-    constexpr auto hadd = [](const __m256i sum) -> std::int32_t {
-        __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(sum), _mm256_extracti128_si256(sum, 1));
-        sum128 = _mm_add_epi32(sum128, _mm_shuffle_epi32(sum128, _MM_PERM_BADC));
-        sum128 = _mm_add_epi32(sum128, _mm_shuffle_epi32(sum128, _MM_PERM_CDAB));
-        return _mm_cvtsi128_si32(sum128);
-    };
+    // constexpr auto hadd = [](const __m256i sum) -> std::int32_t {
+    //     __m128i sum128 = _mm_add_epi32(_mm256_castsi256_si128(sum), _mm256_extracti128_si256(sum, 1));
+    //     sum128 = _mm_add_epi32(sum128, _mm_shuffle_epi32(sum128, _MM_PERM_BADC));
+    //     sum128 = _mm_add_epi32(sum128, _mm_shuffle_epi32(sum128, _MM_PERM_CDAB));
+    //     return _mm_cvtsi128_si32(sum128);
+    // };
 
     const auto in = span_cast<const __m256i>(input);
 
@@ -121,7 +121,7 @@ void affine_tranform(const std::span<const std::uint8_t, I> input, const std::sp
             return _mm256_add_epi32(acc, _mm256_madd_epi16(_mm256_maddubs_epi16(std::get<0>(zip), std::get<1>(zip)), _mm256_set1_epi16(1)));
         });
 
-        output[i] = biases[i] + hadd(sum);
+        output[i] = biases[i] + __builtin_reduce_add((__v8si) sum);
     }
 
     // for (auto i = 0ul; i < O; ++i)

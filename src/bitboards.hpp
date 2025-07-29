@@ -14,8 +14,9 @@ class bitboards
   static const line_lookup_t lookup_line;
   static const leaper_lookup_t lookup_king;
   static const leaper_lookup_t lookup_knight;
-  static const leaper_lookup_t lookup_pawn_white;
-  static const leaper_lookup_t lookup_pawn_black;
+  // static const leaper_lookup_t lookup_pawn_white;
+  // static const leaper_lookup_t lookup_pawn_black;
+  static const std::array<leaper_lookup_t, 2> lookup_pawn;
   static const slider_lookup_t lookup_rook_queen;
   static const slider_lookup_t lookup_bishop_queen;
 
@@ -43,8 +44,10 @@ public:
 
   template <side_e side>
   static bitboard pawn(square square) noexcept;
+  static bitboard pawn(square square, side_e side) noexcept;
   template <side_e side>
   static bitboard pawn(bitboard squares) noexcept;
+  static bitboard pawn(bitboard squares, side_e side) noexcept;
 };
 
 struct bitboards::slider_lookup_t
@@ -93,15 +96,19 @@ inline bitboard bitboards::bishop_queen(square square, bitboard occupied) noexce
 
 template <>
 inline bitboard bitboards::pawn<WHITE>(square square) noexcept {
-  return lookup_pawn_white[square];
+  return lookup_pawn[WHITE][square];
 }
 
 template <>
 inline bitboard bitboards::pawn<BLACK>(square square) noexcept {
-  return lookup_pawn_black[square];
+  return lookup_pawn[BLACK][square];
 }
 
-bitboard bitboards::king(bitboard in) noexcept
+inline bitboard bitboards::pawn(square square, side_e side) noexcept {
+  return lookup_pawn[side][square];
+}
+
+inline bitboard bitboards::king(bitboard in) noexcept
 {
   constexpr quadboard s = {1, 8, 7, 9};
   constexpr quadboard l = {~"a"_f, ~""_f, ~"h"_f, ~"a"_f};
@@ -111,7 +118,7 @@ bitboard bitboards::king(bitboard in) noexcept
   return t[0] | t[1] | t[2] | t[3];
 }
 
-bitboard bitboards::knight(bitboard in) noexcept
+inline bitboard bitboards::knight(bitboard in) noexcept
 {
   constexpr quadboard s = {10, 17, 15, 6};
   constexpr quadboard l = {~"ab"_f, ~"a"_f, ~"h"_f, ~"gh"_f};
@@ -121,7 +128,7 @@ bitboard bitboards::knight(bitboard in) noexcept
   return t[0] | t[1] | t[2] | t[3];
 }
 
-auto bitboards::expand(auto in, auto empty) noexcept {
+inline auto bitboards::expand(auto in, auto empty) noexcept {
 	constexpr quadboard shift = { 1, 8, 7, 9 };
 	constexpr quadboard not_left = { ~"a"_f, ~""_f, ~"h"_f, ~"a"_f };
 	constexpr quadboard not_right = { ~"h"_f, ~""_f, ~"a"_f, ~"h"_f };
@@ -148,7 +155,7 @@ auto bitboards::expand(auto in, auto empty) noexcept {
 	return left | right;
 }
 
-bitboard bitboards::rook_queen(bitboard in, bitboard occupied) noexcept
+inline bitboard bitboards::rook_queen(bitboard in, bitboard occupied) noexcept
 {
   quadboard b = {in, in, 0, 0};
   quadboard o = {occupied, occupied, 0, 0};
@@ -156,7 +163,7 @@ bitboard bitboards::rook_queen(bitboard in, bitboard occupied) noexcept
   return t[0] | t[1];
 }
 
-bitboard bitboards::bishop_queen(bitboard in, bitboard occupied) noexcept
+inline bitboard bitboards::bishop_queen(bitboard in, bitboard occupied) noexcept
 {
   quadboard b = {0, 0, in, in};
   quadboard o = {0, 0, occupied, occupied};
@@ -164,7 +171,7 @@ bitboard bitboards::bishop_queen(bitboard in, bitboard occupied) noexcept
   return t[2] | t[3];
 }
 
-bitboard bitboards::slider(bitboard rook_queen, bitboard bishop_queen, bitboard occupied) noexcept
+inline bitboard bitboards::slider(bitboard rook_queen, bitboard bishop_queen, bitboard occupied) noexcept
 {
   quadboard b = {rook_queen, rook_queen, bishop_queen, bishop_queen};
   quadboard o = {occupied, occupied, occupied, occupied};
@@ -173,7 +180,7 @@ bitboard bitboards::slider(bitboard rook_queen, bitboard bishop_queen, bitboard 
 }
 
 template <>
-bitboard bitboards::pawn<WHITE>(bitboard in) noexcept
+inline bitboard bitboards::pawn<WHITE>(bitboard in) noexcept
 {
   constexpr dualboard s = {7, 9};
   constexpr dualboard m = {~"h"_f, ~"a"_f};
@@ -183,7 +190,7 @@ bitboard bitboards::pawn<WHITE>(bitboard in) noexcept
 }
 
 template <>
-bitboard bitboards::pawn<BLACK>(bitboard in) noexcept
+inline bitboard bitboards::pawn<BLACK>(bitboard in) noexcept
 {
   constexpr dualboard s = {7, 9};
   constexpr dualboard m = {~"a"_f, ~"h"_f};
@@ -192,10 +199,14 @@ bitboard bitboards::pawn<BLACK>(bitboard in) noexcept
   return t[0] | t[1];
 }
 
+inline bitboard bitboards::pawn(bitboard in, side_e side) noexcept {
+  return side == WHITE ? pawn<WHITE>(in) : pawn<BLACK>(in);
+}
+
 constexpr bitboard bitboards::permutation(bitboard iteration, bitboard mask) noexcept {
   bitboard blockers = 0ull;
   while (iteration != 0ull) {
-    if ((iteration & 1ull) != 0ull) {
+    if ((iteration & bitboard{1ull}) != bitboard{0ull}) {
       blockers |= bitboard{mask.front()};
     }
     iteration >>= 1;
@@ -218,19 +229,28 @@ const bitboards::leaper_lookup_t bitboards::lookup_knight = []() noexcept {
   return lookup;
 }();
 
-const bitboards::leaper_lookup_t bitboards::lookup_pawn_white = []() noexcept {
-  leaper_lookup_t lookup{};
-  for (square sq : ALL)
-    lookup[sq] = pawn<WHITE>(bitboard{sq});
+const std::array<bitboards::leaper_lookup_t, 2> bitboards::lookup_pawn = []() noexcept {
+  std::array<bitboards::leaper_lookup_t, 2> lookup{};
+  for (square sq : ALL) {
+    lookup[WHITE][sq] = pawn<WHITE>(bitboard{sq});
+    lookup[BLACK][sq] = pawn<BLACK>(bitboard{sq});
+  }
   return lookup;
 }();
 
-const bitboards::leaper_lookup_t bitboards::lookup_pawn_black = []() noexcept {
-  leaper_lookup_t lookup{};
-  for (square sq : ALL)
-    lookup[sq] = pawn<BLACK>(bitboard{sq});
-  return lookup;
-}();
+// const bitboards::leaper_lookup_t bitboards::lookup_pawn_white = []() noexcept {
+//   leaper_lookup_t lookup{};
+//   for (square sq : ALL)
+//     lookup[sq] = pawn<WHITE>(bitboard{sq});
+//   return lookup;
+// }();
+
+// const bitboards::leaper_lookup_t bitboards::lookup_pawn_black = []() noexcept {
+//   leaper_lookup_t lookup{};
+//   for (square sq : ALL)
+//     lookup[sq] = pawn<BLACK>(bitboard{sq});
+//   return lookup;
+// }();
 
 const bitboards::slider_lookup_t bitboards::lookup_rook_queen = []() noexcept {
   std::array<slider_lookup_t::block_t, 64> blocks {};
