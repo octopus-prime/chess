@@ -3,9 +3,9 @@
 #include "position.hpp"
 #include "transposition.hpp"
 #include "history.hpp"
-#include "evaluator2.hpp"
-#include "uci.hpp"
+#include "evaluator.hpp"
 #include <print>
+#include <chrono>
 
 struct searcher_t {
 
@@ -17,7 +17,7 @@ struct searcher_t {
 
     struct result_t {
         std::int32_t score;
-        std::span<move2_t> pv;
+        std::span<move_t> pv;
 
         result_t operator-() const noexcept {
             return {-score, pv};
@@ -26,10 +26,10 @@ struct searcher_t {
 
 
     position_t& position;
-    transposition2_t& transposition;
-    history2_t& history;
-    evaluator2& evaluator;
-    std::array<move2_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
+    transposition_t& transposition;
+    history_t& history;
+    evaluator& evaluator;
+    std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
     statistics_t stats;
     std::atomic<bool> should_stop_flag{false};
 
@@ -48,7 +48,7 @@ struct searcher_t {
     bool should_stop() const noexcept {
         return should_stop_flag.load();
     }
-    
+
     int operator()(int alpha, int beta, int height) noexcept {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
@@ -60,8 +60,8 @@ struct searcher_t {
         side_e side = position.get_side();
 
         // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        int stand_pat = position.get_material() + evaluator.evaluate(position) / 16;
-        // int stand_pat = evaluator.evaluate(position);
+        int stand_pat = position.get_material() + evaluator.evaluate(position);// / 8;
+        // int stand_pat = evaluator.evaluate(position) / 8;
 
         // // Prevent Q-search explosion
         // if (q_depth > 6) {
@@ -75,11 +75,11 @@ struct searcher_t {
             alpha = stand_pat;
         }
 
-        std::array<move2_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move2_t> moves = position.generate_moves(buffer, position.by(~side));
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_moves(buffer, position.by(~side));
 
         std::array<int, position_t::MAX_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move2_t& move) {
+        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
             return position.see(move);
         });
 
@@ -108,7 +108,7 @@ struct searcher_t {
         return alpha;
     }
 
-    result_t operator()(int alpha, int beta, int height, int depth, std::span<move2_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
         if (should_stop()) {
             return {alpha, {}};
         }
@@ -120,16 +120,16 @@ struct searcher_t {
             return {0, {}};
         }
 
-        std::array<move2_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move2_t> moves = position.generate_moves(buffer, bitboards::ALL);
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_moves(buffer, bitboards::ALL);
 
         if (moves.empty()) {
             return {position.is_check() ? -30000 + height : 0, {}};
         }
 
-        if (position.is_check() || moves.size() == 1) {
-            depth++;
-        }
+        // if (position.is_check() || moves.size() == 1) {
+        //     depth++;
+        // }
 
         if (depth == 0) {
             stats.nodes--;
@@ -137,8 +137,8 @@ struct searcher_t {
             return {score, {}};
         }
 
-        move2_t best;
-        const entry2_t* const entry = transposition.get(position.hash());
+        move_t best;
+        const entry_t* const entry = transposition.get(position.hash());
         if (entry) {
             best = entry->move;
             if (entry->depth >= depth) {
@@ -164,10 +164,10 @@ struct searcher_t {
             }
         }
 
-        std::array<move2_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
+        std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        const int R = depth / 3;
-        if (depth > R + 2 && position.can_null_move()) {
+        const int R = depth / 4;
+        if (depth > R + 2 && moves.size() > 8 && position.can_null_move()) {
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
@@ -179,8 +179,17 @@ struct searcher_t {
             }
         }
 
+        
+        // if (best == move_t{} && depth > 4) {
+        //     // best = foo(alpha, beta, height, depth - 2, pv_buffer);
+        //     auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+        //     if (!pv.empty()) {
+        //         best = pv.front();
+        //     }
+        // }
+
         std::array<int, position_t::MAX_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move2_t& move) {
+        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
             return position.see(move) + history.get(move, height, position.get_side());
         });
 
@@ -191,6 +200,7 @@ struct searcher_t {
 
         size_t length = 0;
         bool pv_found = false;
+        // bool check = !position.is_check();
         size_t index = 0;
         for (auto&& [move, gain] : zip) {
 
@@ -199,20 +209,21 @@ struct searcher_t {
                 std::fflush(stdout);
             }
 
-            // if (depth == 1 && pv_found && !position.is_check() && position.get_material() + gain + 100 < alpha) {
-            //     break;  // pruning: skip moves that can't improve alpha
+            // if (depth == 1 && pv_found && !position.is_check() && position.get_material() + gain + 300 < alpha) {
+            //     index++;
+            //     continue;
             // }
 
-            if (!position.is_check() && pv_found && depth > 8 && index > 8 && gain <= 0) {
-                index++;
-                continue;
-            }
+            // if (!position.is_check() && pv_found && depth > 10 && index > 20 && gain <= 0) {
+            //     index++;
+            //     continue;
+            // }
 
             position.make_move(move);
             result_t result;
-            if (pv_found) {
-                // if (depth > 4 && index > 10) {
-                //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - 2, pv_buffer);
+            if (pv_found && !position.is_check()) {
+                // if (depth > R + 2 && index > moves.size() / 2 && gain <= 0) {
+                //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
                 // } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
                 // }
@@ -255,14 +266,18 @@ struct searcher_t {
         return {alpha, pv.first(length)};
     }
 
-    move2_t operator()(int depth) {
+    move_t foo(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+        move_t best;
+        for (int iteration = 1; iteration <= depth; ++iteration) {
+            best = (*this)(alpha, beta, height, iteration, pv).pv.front();
+        }
+        return best;
+    }
+
+    move_t operator()(int depth) {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
-        // std::println("\ndepth: {}, fen: {}", depth, fen);
 
-        // position_t position{fen};
-        // searcher_t search{position, transposition, history, evaluator};
-
-        move2_t best;
+        move_t best;
         auto t0 = std::chrono::high_resolution_clock::now();
         for (int iteration = 1; iteration <= depth; ++iteration) {
             result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
@@ -274,56 +289,10 @@ struct searcher_t {
             auto time = duration_cast<as_floating_point>(time1 - t0).count();
             std::println("info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} time {} pv {}", iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
             std::fflush(stdout);
-            // std::println("Depth {}/{}: {} nodes, score {}, pv {}", d, search.stats.max_height, search.stats.nodes, score, pv);
             if (result.score < -29000 || result.score > 29000) {
                 break;
             }
         }
         return best;
-        // auto t1 = std::chrono::high_resolution_clock::now();
-        // std::chrono::duration<double> elapsed = t1 - t0;
-
-        // std::println("Total nodes: {}, elapsed time: {:.2f} seconds, performance: {:.2f} Mnps", 
-        //     search.stats.nodes, 
-        //     elapsed.count(), 
-        //     (search.stats.nodes / elapsed.count()) / 1e6);
-
-        // transposition.clear();
-        // history.clear();
     }
-};
-
-struct foo_search {
-
-    transposition2_t transposition;
-    history2_t history;
-    evaluator2 evaluator;
-    std::array<move2_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-
-    void operator()(std::string_view fen, int depth) {
-        std::println("\ndepth: {}, fen: {}", depth, fen);
-
-        position_t position{fen};
-        searcher_t search{position, transposition, history, evaluator};
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-        for (int d = 1; d <= depth; ++d) {
-            auto [score, pv] = search(-30000, 30000, 0, d, pv_buffer);
-            std::println("Depth {}/{}: {} nodes, score {}, pv {}", d, search.stats.max_height, search.stats.nodes, score, pv);
-            if (score < -29000 || score > 29000) {
-                break;
-            }
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = t1 - t0;
-
-        std::println("Total nodes: {}, elapsed time: {:.2f} seconds, performance: {:.2f} Mnps", 
-            search.stats.nodes, 
-            elapsed.count(), 
-            (search.stats.nodes / elapsed.count()) / 1e6);
-
-        transposition.clear();
-        history.clear();
-    }
-
 };

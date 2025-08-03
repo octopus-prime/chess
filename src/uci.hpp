@@ -8,7 +8,7 @@
 
 #include <functional>
 #include <iostream>
-#include <regex>
+// #include <regex>
 #include <map>
 #include <print>
 #include <sstream>
@@ -18,13 +18,13 @@
 struct uci_interface {
 
     uci_interface()
-    : options {
-        {"Hash", "1"}
-    }, 
-    commands {
+    // : options {
+    //     {"Hash", "1"}
+    // }, 
+    : commands {
         {"ucinewgame"sv, std::bind(&uci_interface::ucinewgame, this, std::placeholders::_1)},
         {"uci"sv, std::bind(&uci_interface::uci, this, std::placeholders::_1)},
-        {"setoption"sv, std::bind(&uci_interface::setoption, this, std::placeholders::_1)},
+        // {"setoption"sv, std::bind(&uci_interface::setoption, this, std::placeholders::_1)},
         {"isready"sv, std::bind(&uci_interface::isready, this, std::placeholders::_1)},
         {"position"sv, std::bind(&uci_interface::position, this, std::placeholders::_1)},
         {"go"sv, std::bind(&uci_interface::go, this, std::placeholders::_1)},
@@ -47,169 +47,132 @@ private:
     void uci(std::string_view) {
         std::println("id name chess");
         std::println("id author me");
-        std::println("option name Hash type spin default 1 min 1 max 16");
+        // std::println("option name Hash type spin default 1 min 1 max 16");
         std::println("uciok");
     }
 
-    void setoption(std::string_view args) {
-        static const std::regex re("setoption name (\\w+) value (\\w+)");
-        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-            options[m[1].str()] = m[2].str();
-        }
-    }
+    // void setoption(std::string_view args) {
+    //     static const std::regex re("setoption name (\\w+) value (\\w+)");
+    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
+    //         options[m[1].str()] = m[2].str();
+    //     }
+    // }
 
     void isready(std::string_view) {
-        std::println("hash = {}", options["Hash"]);
+        // std::println("hash = {}", options["Hash"]);
         std::println("readyok");
     }
 
     void ucinewgame(std::string_view) {
         position_ = position_t{};
+        searcher.clean();
     }
 
-    // void position(std::string_view args) {
-    //     static const std::regex re("position fen (.*)");
-    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-    //         root = node{m[1].str(), side};
-    //     }
-    // }
-
-    // void position(std::string_view args) {
-    //     static const std::regex re("^position (startpos|fen )(.*)( moves( \\w)+)?$");
-    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-    //         auto s = m[2].str();
-    //         if (s.empty())
-    //             s = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    //         root = node{s, side};
-    //         if (m[3].matched) {
-    //             side_e side_ = side;
-    //             for (auto x : std::views::split(m[3].str(), ' ')) {
-    //                 std::string_view v {x};
-    //                 std::println("executing '{}'", v);
-    //                 (side_ == WHITE) ? root.execute<WHITE>(v) : root.execute<BLACK>(v);
-    //                 side_ = ~side_;
-    //             }
-    //         }
-    //     }
-    // }
-
-    // void position(std::string_view args) {
-    //     static const std::regex re("position startpos moves (.*)");
-    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-    //         // std::println("xxxxx positioning matched");
-    //         root = node{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, side};
-    //         if (m[1].matched) {
-    //             for (auto x : std::views::split(m[1].str(), ' ')) {
-    //                 std::string_view v {x};
-    //                 // std::println("xxxxx executing '{}'", v);
-    //                 (side == WHITE) ? root.execute<WHITE>(v) : root.execute<BLACK>(v);
-    //                 side = ~side;
-    //             }
-    //         }
-    //     }
-    // }
-
     void position(std::string_view args) {
-        static const std::regex re("position startpos( moves (.*))?");
-        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-            // std::println("xxxxx positioning matched");
-            position_ = position_t{}; // fix fen
-            if (m[2].matched) {
-                for (auto&& move : std::views::split(m[2].str(), ' ')) {
-                    std::string_view v {move};
-                    move2_t move2{v};
-                    position_.make_move(move2);
-                }
+        args.remove_prefix("position "sv.size());
+
+        auto parts = std::views::split(args, " moves "sv);
+        auto part = parts.begin();
+
+        std::string_view position_part {*part++};
+        if (position_part == "startpos"sv) {
+            position_ = position_t{};
+        } else {
+            position_part.remove_prefix("fen "sv.size());
+            position_ = position_t{position_part};
+        }
+
+        if (part != parts.end()) {
+            std::string_view moves_part {*part++};
+            for (auto&& move : std::views::split(moves_part, ' ')) {
+                position_.make_move(std::string_view{move});
             }
         }
     }
 
-    // void go(std::string_view args) {
-    //     static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*)( movestogo (\\d*))?");
-    //     if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-    //         auto timeleft = std::stoll(m[position_.get_side() == WHITE ? 1 : 2].str());
-    //         auto timeinc = std::stoll(m[position_.get_side() == WHITE ? 3 : 4].str());
-    //         long timetogo = timeinc;
-    //         if (m[6].matched) {
-    //             auto movestogo = std::stoll(m[6].str()) + 1;
-    //             timetogo += timeleft / movestogo;
-    //         } else
-    //             timetogo += timeleft * 5 / 100;
-    //         searcher.clean();
-    //         search = std::jthread{[&] {
-    //             constexpr auto depth = 100;
-    //             auto [score, pv] = searcher(depth);
-    //             std::println("bestmove {}", pv.front());
-    //             std::fflush(stdout);
-    //         }};
-    //         // searcher.stop_token = search.get_stop_token();
-    //         timer = std::jthread{[this, timetogo] {
-    //             std::this_thread::sleep_for(timetogo * 1ms);
-    //             // if (!search.get_stop_token().stop_requested())
-    //                 stop(""sv);
-    //         }};
-    //         if (timer.joinable())
-    //             timer.join();
-    //     }
-    // }
-
-    // void stop(std::string_view) {
-    //     search.request_stop();
-    //     if (search.joinable())
-    //         search.join();
-    // }
-
     void go(std::string_view args) {
-        static const std::regex re("go wtime (\\d*) btime (\\d*) winc (\\d*) binc (\\d*)( movestogo (\\d*))?");
-        if (std::cmatch m; std::regex_match(&*args.begin(), &*args.end(), m, re)) {
-            auto timeleft = std::stoll(m[position_.get_side() == WHITE ? 1 : 2].str());
-            auto timeinc = std::stoll(m[position_.get_side() == WHITE ? 3 : 4].str());
-            long timetogo = timeinc;
-            if (m[6].matched) {
-                auto movestogo = std::stoll(m[6].str()) + 1;
-                timetogo += timeleft / movestogo;
-            } else
-                timetogo += timeleft * 5 / 100;
+        args.remove_prefix("go "sv.size());
 
-            searcher.clean();
-            
-            search = std::jthread{[&] {
-                constexpr auto depth = 100;
-                move2_t best = searcher(depth);
-                std::println("bestmove {}", best);
-                std::fflush(stdout);
-            }};
-            
-            timer = std::jthread{[this, timetogo] {
-                std::this_thread::sleep_for(timetogo * 1ms);
-                searcher.request_stop();
-            }};
-            
-            if (timer.joinable())
-                timer.join();
+        auto parts = std::views::split(args, ' ');
+        auto part = parts.begin();
+
+        part++; //wtime
+        std::string_view wtime_part {*part++};
+        std::int64_t wtime;
+        std::from_chars(&*wtime_part.begin(), &*wtime_part.end(), wtime);
+
+        part++; //btime
+        std::string_view btime_part {*part++};
+        std::int64_t btime;
+        std::from_chars(&*btime_part.begin(), &*btime_part.end(), btime);
+
+        part++; //winc
+        std::string_view winc_part {*part++};
+        std::int64_t winc;
+        std::from_chars(&*winc_part.begin(), &*winc_part.end(), winc);
+
+        part++; //binc
+        std::string_view binc_part {*part++};
+        std::int64_t binc;
+        std::from_chars(&*binc_part.begin(), &*binc_part.end(), binc);
+
+        auto timeleft = (position_.get_side() == WHITE) ? wtime : btime;
+        auto timeinc = (position_.get_side() == WHITE) ? winc : binc;
+        auto timetogo = timeinc;
+
+        if (part != parts.end()) {
+            part++; //movestogo
+            std::string_view movestogo_part {*part++};
+            auto movestogo = std::stoll(movestogo_part.data()) + 1;
+            timetogo += timeleft / movestogo;
+        } else {
+            timetogo += timeleft * 5 / 100;
         }
+
+        search = std::jthread{[&] {
+            constexpr auto depth = 100;
+            move_t best = searcher(depth);
+            std::println("bestmove {}", best);
+            std::fflush(stdout);
+        }};
+        
+        timer = std::jthread{[this, timetogo] {
+            using clock = std::chrono::high_resolution_clock;
+            auto end = clock::now() + std::chrono::milliseconds(timetogo);
+            while (clock::now() < end) {
+                if (searcher.should_stop()) {
+                    break;
+                }
+                std::this_thread::sleep_for(1ms);
+            }
+            searcher.request_stop();
+        }};
+        
+        if (timer.joinable())
+            timer.join();
+
+        searcher.clean();
     }
 
-void stop(std::string_view) {
-    searcher.request_stop();
-    if (search.joinable())
-        search.join();
-}
+    void stop(std::string_view) {
+        searcher.request_stop();
+        if (search.joinable())
+            search.join();
+    }
 
     void quit(std::string_view args) {
         stop(args);
         std::exit(0);
     }
 
-    std::map<std::string, std::string> options;
+    // std::map<std::string, std::string> options;
     std::map<std::string_view, std::function<void(std::string_view)>> commands;
 
     position_t position_;
-    transposition2_t transposition;
-    history2_t history;
-    evaluator2 evaluator;
+    transposition_t transposition;
+    history_t history;
+    evaluator evaluator;
     searcher_t searcher{position_, transposition, history, evaluator};
-    std::array<move2_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
     std::jthread search;
     std::jthread timer;
 };

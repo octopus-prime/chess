@@ -10,7 +10,7 @@ constexpr inline size_t TYPE_MAX = 8;
 
 inline constexpr type_e operator""_t(const char* str, size_t len) {
     if (len == 0) return NO_TYPE;
-    switch (std::tolower(str[0])) {
+    switch (str[0] | 32) {
         case 'p': return PAWN;
         case 'n': return KNIGHT;
         case 'b': return BISHOP;
@@ -20,7 +20,6 @@ inline constexpr type_e operator""_t(const char* str, size_t len) {
         default: return NO_TYPE;
     }
 }
-
 
 template <>
 struct std::formatter<type_e> {
@@ -65,21 +64,6 @@ struct piece {
         side_e side = std::isupper(view[0]) ? WHITE : BLACK;
         type_e type  = operator""_t(view.data(), view.size());
         value = piece{side, type};
-        // switch (view[0]) {
-        //     case 'K': value = WKING; break;
-        //     case 'k': value = BKING; break;
-        //     case 'Q': value = WQUEEN; break;
-        //     case 'q': value = BQUEEN; break;
-        //     case 'R': value = WROOK; break;
-        //     case 'r': value = BROOK; break;
-        //     case 'B': value = WBISHOP; break;
-        //     case 'b': value = BBISHOP; break;
-        //     case 'N': value = WKNIGHT; break;
-        //     case 'n': value = BKNIGHT; break;
-        //     case 'P': value = WPAWN; break;
-        //     case 'p': value = BPAWN; break;
-        //     default: value = NO_PIECE; break;
-        // }
     }
 
     constexpr side_e side() const noexcept {
@@ -109,7 +93,7 @@ constexpr std::array<int16_t, TYPE_MAX> type_values = {
     300, // BISHOP
     500, // ROOK
     900, // QUEEN
-    0    // KING
+    10000    // KING
 };
 
 inline constexpr int16_t operator""_v(const char* str, size_t len) {

@@ -1,121 +1,67 @@
 #pragma once
 
 #include "square.hpp"
+#include "piece.hpp"
 
-class move_t {
-public:
-    enum type_t : std::uint8_t {
-        KING,
-        CASTLE_SHORT,
-        CASTLE_LONG,
-        QUEEN,
-        ROOK,
-        BISHOP,
-        KNIGHT,
-        PAWN,
-        PROMOTE_QUEEN,
-        PROMOTE_ROOK,
-        PROMOTE_BISHOP,
-        PROMOTE_KNIGHT,
-        DOUBLE_PUSH,
-        EN_PASSANT
-    };
+struct move_t {
+    constexpr move_t() noexcept : from_{NO_SQUARE}, to_{NO_SQUARE}, promotion_{NO_TYPE} {
+    }
+
+    constexpr move_t(square from, square to, type_e promotion = NO_TYPE) noexcept : from_{from}, to_{to}, promotion_{promotion} {
+    }
+
+    constexpr move_t(std::string_view string) noexcept : from_{string.substr(0, 2)}, to_{string.substr(2, 2)} {
+        string.remove_prefix(4);
+        promotion_ = operator""_t(string.data(), string.size());
+    }
+
+    constexpr bool operator==(const move_t& other) const noexcept = default;
+
+    constexpr square from() const noexcept {
+        return from_;
+    }
+
+    constexpr square to() const noexcept {
+        return to_;
+    }
+
+    constexpr type_e promotion() const noexcept {
+        return promotion_;
+    }
 
 private:
-    type_t type_;
     square from_;
     square to_;
-
-public:
-    constexpr move_t(type_t type = KING, square from = NO_SQUARE, square to = NO_SQUARE) noexcept
-        : type_{type}, from_{from}, to_{to} {}
-    constexpr type_t type() const noexcept { return type_; }
-    constexpr square from() const noexcept { return from_; }
-    constexpr square to() const noexcept { return to_; }
-    constexpr bool operator==(const move_t& other) const noexcept = default;
+    type_e promotion_;
 };
+
+inline constexpr move_t operator""_m(const char* str, size_t len) noexcept {
+    return std::string_view{str, len};
+}
+
 
 template <>
 struct std::formatter<move_t> {
-    constexpr auto parse(std::format_parse_context& ctx) {
+    constexpr auto parse(std::format_parse_context& ctx){
         return ctx.begin();
     }
+
     auto format(move_t move, std::format_context& ctx) const {
-        auto out = std::format_to(ctx.out(), "{}{}", move.from(), move.to());
-        switch (move.type())
-        {
-        case move_t::KING:
-        case move_t::CASTLE_SHORT:
-        case move_t::CASTLE_LONG:
-        case move_t::KNIGHT:
-        case move_t::QUEEN:
-        case move_t::ROOK:
-        case move_t::BISHOP:
-        case move_t::PAWN:
-        case move_t::DOUBLE_PUSH:
-            return out;
-        case move_t::PROMOTE_QUEEN:
-            return std::format_to(out, "q");
-        case move_t::PROMOTE_ROOK:
-            return std::format_to(out, "r");
-        case move_t::PROMOTE_BISHOP:
-            return std::format_to(out, "b");
-        case move_t::PROMOTE_KNIGHT:
-            return std::format_to(out, "n");
-        case move_t::EN_PASSANT:
-            return out;
-        }
+        return std::format_to(ctx.out(), "{}{}{}", move.from(), move.to(), move.promotion());
     }
 };
 
-template <>
-struct std::formatter<std::span<move_t>> {
+template<typename T>
+struct std::formatter<std::span<T>> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
-    auto format(std::span<move_t> moves, std::format_context& ctx) const {
-        auto out = ctx.out();
-        for (const auto& move : moves)
-            out = std::format_to(out, " {}", move);
-        return out;
+
+    auto format(std::span<T> span, std::format_context& ctx) const {
+        for (size_t i = 0; i < span.size(); ++i) {
+            if (i > 0) std::format_to(ctx.out(), "{}", ' ');
+            std::format_to(ctx.out(), "{}", span[i]);
+        }
+        return ctx.out();
     }
 };
-
-// template <>
-// struct std::formatter<move_t> {
-//     constexpr auto parse(std::format_parse_context& ctx) {
-//         return ctx.begin();
-//     }
-//     auto format(move_t move, std::format_context& ctx) const {
-//         switch (move.type())
-//         {
-//         case move_t::KING:
-//             return std::format_to(ctx.out(), "K{}{}", move.from(), move.to());
-//         case move_t::CASTLE_SHORT:
-//             return std::format_to(ctx.out(), "O-O");
-//         case move_t::CASTLE_LONG:
-//             return std::format_to(ctx.out(), "O-O-O");
-//         case move_t::KNIGHT:
-//             return std::format_to(ctx.out(), "N{}{}", move.from(), move.to());
-//         case move_t::QUEEN:
-//             return std::format_to(ctx.out(), "Q{}{}", move.from(), move.to());
-//         case move_t::ROOK:
-//             return std::format_to(ctx.out(), "R{}{}", move.from(), move.to());
-//         case move_t::BISHOP:
-//             return std::format_to(ctx.out(), "B{}{}", move.from(), move.to());
-//         case move_t::PAWN:
-//         case move_t::DOUBLE_PUSH:
-//             return std::format_to(ctx.out(), "P{}{}", move.from(), move.to());
-//         case move_t::PROMOTE_QUEEN:
-//             return std::format_to(ctx.out(), "P{}{}Q", move.from(), move.to());
-//         case move_t::PROMOTE_ROOK:
-//             return std::format_to(ctx.out(), "P{}{}R", move.from(), move.to());
-//         case move_t::PROMOTE_BISHOP:
-//             return std::format_to(ctx.out(), "P{}{}B", move.from(), move.to());
-//         case move_t::PROMOTE_KNIGHT:
-//             return std::format_to(ctx.out(), "P{}{}N", move.from(), move.to());
-//         case move_t::EN_PASSANT:
-//             return std::format_to(ctx.out(), "P{}{}ep", move.from(), move.to());
-//         }
-//     }
-// };

@@ -4,18 +4,17 @@
 #include "ut.hpp"
 
 static_assert(sizeof(move_t) == 3);
-static_assert(move_t{move_t::PAWN, "e2"_s, "e4"_s}.from() == "e2"_s);
-static_assert(move_t{move_t::PAWN, "e2"_s, "e4"_s}.to() == "e4"_s);
-static_assert(move_t{move_t::PAWN, "e2"_s, "e4"_s}.type() == move_t::PAWN);
+static_assert("e2e4"_m.from() == E2);
+static_assert("e2e4"_m.to() == E4);
+static_assert("e7e8q"_m.promotion() == QUEEN);
 
 void test_move() {
     namespace ut = boost::ut;
     using ut::operator""_test;
 
-    "move"_test = [] {
-        char buffer[7];
-        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 7, "{}", move_t{move_t::PAWN, "e2"_s, "e4"_s}).out}, "e2e4"sv));
-        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 7, "{}", move_t{move_t::CASTLE_SHORT, "e1"_s, "g1"_s}).out}, "e1g1"sv));
-        ut::expect(ut::eq(std::string_view{buffer, std::format_to_n(buffer, 7, "{}", move_t{move_t::CASTLE_LONG, "e8"_s, "c8"_s}).out}, "e8c8"sv));
+    "move"_test = []() {
+        ut::expect("e2e4"_m == move_t{E2, E4, ""_t});
+        ut::expect("e7e8p"_m == move_t{E7, E8, "p"_t});
+        ut::expect("e7e8q"_m == move_t{E7, E8, "q"_t});
     };
 }

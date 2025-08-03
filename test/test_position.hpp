@@ -7,91 +7,64 @@ void test_position() {
     namespace ut = boost::ut;
     using ut::operator""_test;
 
-    struct test_data {
-        std::string_view fen;
-        bitboard wpawn, wknight, wbishop, wrook, wqueen, wking;
-        bitboard bpawn, bknight, bbishop, brook, bqueen, bking;
-        bitboard castle, en_passant;
-        side_e side;
-        bool check, rule50;
+    // note: perft tests
+
+    "check"_test = [] {
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KN2 w - -"}.is_check(), false));
+        ut::expect(ut::eq(position_t{"2Q3n1/k2R4/p7/5p2/1pN5/5P2/PPP5/2K1R3 b - -"}.is_check(), true));
     };
 
-    "position"_test = [] {
-        test_data tests[] = {
-            {
-                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv, 
-                "a2b2c2d2e2f2g2h2"_b, "b1g1"_b, "c1f1"_b, "a1h1"_b, "d1"_b, "e1"_b,
-                "a7b7c7d7e7f7g7h7"_b, "b8g8"_b, "c8f8"_b, "a8h8"_b, "d8"_b, "e8"_b,
-                "a1h1a8h8"_b, ""_b,
-                WHITE, false, false
-            },
-            {
-                "r2r2k1/1p1q1pp1/2n3bp/p3p3/P3P3/1P1P1P1P/2P2NP1/R1BQR1K1 w - - 100 70"sv,
-                "a4b3c2d3e4f3g2h3"_b, "f2"_b, "c1"_b, "a1e1"_b, "d1"_b, "g1"_b,
-                "a5b7e5f7g7h6"_b, "c6"_b, "g6"_b, "a8d8"_b, "d7"_b, "g8"_b,
-                ""_b, ""_b,
-                WHITE, false, true
-            },
-            {
-                "7k/8/8/8/8/8/8/4K2R b K - 13 37"sv,
-                ""_b, ""_b, ""_b, "h1"_b, ""_b, "e1"_b,
-                ""_b, ""_b, ""_b, ""_b, ""_b, "h8"_b,
-                "h1"_b, ""_b,
-                BLACK, true, false
-            },
-            {
-                "4k3/8/8/8/4Pp2/8/8/4K3 b - e3 99 99"sv,
-                "e4"_b, ""_b, ""_b, ""_b, ""_b, "e1"_b,
-                "f4"_b, ""_b, ""_b, ""_b, ""_b, "e8"_b,
-                ""_b, "e3"_b,
-                BLACK, false, false
-            },
-        };
+    "50_moves_rule"_test = [] {
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KN2 w - - 99 123"}.is_50_moves_rule(), false));
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KN2 w - - 100 123"}.is_50_moves_rule(), true));
+    };
 
-        for (const auto& [fen, wpawn, wknight, wbishop, wrook, wqueen, wking, bpawn, bknight, bbishop, brook, bqueen, bking, castle, en_passant, side, check, rule50] : tests) {
-            position_t position{fen};
-            ut::expect(ut::eq(position.by(WPAWN), wpawn));
-            ut::expect(ut::eq(position.by(WKNIGHT), wknight));
-            ut::expect(ut::eq(position.by(WBISHOP), wbishop));
-            ut::expect(ut::eq(position.by(WROOK), wrook));
-            ut::expect(ut::eq(position.by(WQUEEN), wqueen));
-            ut::expect(ut::eq(position.by(WKING), wking));
-            ut::expect(ut::eq(position.by(WHITE), wking | wqueen | wrook | wbishop | wknight | wpawn));
-            ut::expect(ut::eq(position.by(BPAWN), bpawn));
-            ut::expect(ut::eq(position.by(BKNIGHT), bknight));
-            ut::expect(ut::eq(position.by(BBISHOP), bbishop));
-            ut::expect(ut::eq(position.by(BROOK), brook));
-            ut::expect(ut::eq(position.by(BQUEEN), bqueen));
-            ut::expect(ut::eq(position.by(BKING), bking));
-            ut::expect(ut::eq(position.by(BLACK), bking | bqueen | brook | bbishop | bknight | bpawn));
-            ut::expect(ut::eq(position.by(PAWN), wpawn | bpawn));
-            ut::expect(ut::eq(position.by(KNIGHT), wknight | bknight));
-            ut::expect(ut::eq(position.by(BISHOP), wbishop | bbishop));
-            ut::expect(ut::eq(position.by(ROOK), wrook | brook));
-            ut::expect(ut::eq(position.by(QUEEN), wqueen | bqueen));
-            ut::expect(ut::eq(position.by(KING), wking | bking));
-            // ut::expect(ut::eq(position.castle(), castle));
-            // ut::expect(ut::eq(position.en_passant(), en_passant));
-            ut::expect(ut::eq(position.get_side(), side));
-            ut::expect(ut::eq(position.is_check(), check)) << fen;
-            ut::expect(ut::eq(position.is_50_moves_rule(), rule50));
+    "3_fold_repetition"_test = [] {
+        position_t position{};
+        position.make_move("g1f3"_m);
+        position.make_move("g8f6"_m);
+        position.make_move("f3g1"_m);
+        position.make_move("f6g8"_m);
+        position.make_move("g1f3"_m);
+        position.make_move("g8f6"_m);
+        position.make_move("f3g1"_m);
+        ut::expect(ut::eq(position.is_3_fold_repetition(), false)); 
+        position.make_move("f6g8"_m);
+        ut::expect(ut::eq(position.is_3_fold_repetition(), true));
+    };
+
+    "no_material"_test = [] {
+        ut::expect(ut::eq(position_t{}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KN2 w - -"}.is_no_material(), true));
+    };
+
+    "see"_test = []() {
+        std::ifstream stream{"../epd/see.txt"};
+        std::array<char, 256> epd;
+        while (stream.good()) {
+            stream.getline(epd.data(), epd.size());
+            std::string_view epd_view{epd.data()};
+
+            if (epd_view.empty() || epd_view.starts_with("#")) {
+                return;
+            }
+
+            auto parts = epd_view | std::views::split("; "sv);
+            auto part = parts.begin();
+
+            std::string_view fen_part{*part++};
+            position_t position{fen_part};
+
+            std::string_view move_part{*part++};
+            move_t move{move_part};
+
+            std::string_view see_part{*part++};
+            int see_value;
+            std::from_chars(&*see_part.begin(), &*see_part.end(), see_value);
+
+            int see_result = position.see(move);
+            ut::expect(ut::eq(see_result, see_value)) << epd_view;
+            // std::println("{}: {} -> {}", epd_view, move, see_value);
         }
-    };
-
-    // "position 3_fold_repetition"_test = [] {
-    //     position_t position{};
-    //     move2_t move{};
-    //     position.make_move(move);
-    //     ut::expect(ut::eq(position.is_3_fold_repetition(), false));
-    //     position.make_move(move);
-    //     ut::expect(ut::eq(position.is_3_fold_repetition(), true));
-    //     position.undo_move(move);
-    //     ut::expect(ut::eq(position.is_3_fold_repetition(), false));
-    // };
-
-    "foo"_test = []() {
-        ut::expect("e2e4"_m == move2_t{E2, E4, ""_t});
-        ut::expect("e7e8p"_m == move2_t{E7, E8, "p"_t});
-        ut::expect("e7e8q"_m == move2_t{E7, E8, "q"_t});
     };
 }

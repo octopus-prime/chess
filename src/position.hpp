@@ -4,71 +4,10 @@
 #include "bitboards.hpp"
 #include "piece.hpp"
 #include "hashes.hpp"
+#include "move.hpp"
 #include <vector>
 #include <print>
-
-struct move2_t {
-    constexpr move2_t() noexcept : from_{NO_SQUARE}, to_{NO_SQUARE}, promotion_{NO_TYPE} {
-    }
-
-    constexpr move2_t(square from, square to, type_e promotion = NO_TYPE) noexcept : from_{from}, to_{to}, promotion_{promotion} {
-    }
-
-    constexpr move2_t(std::string_view string) noexcept : from_{string.substr(0, 2)}, to_{string.substr(2, 2)} {
-        string.remove_prefix(4);
-        promotion_ = operator""_t(string.data(), string.size());
-    }
-
-    constexpr bool operator==(const move2_t& other) const noexcept = default;
-
-    constexpr square from() const noexcept {
-        return from_;
-    }
-
-    constexpr square to() const noexcept {
-        return to_;
-    }
-
-    constexpr type_e promotion() const noexcept {
-        return promotion_;
-    }
-
-private:
-    square from_;
-    square to_;
-    type_e promotion_;
-};
-
-inline constexpr move2_t operator""_m(const char* str, size_t len) noexcept {
-    return move2_t{std::string_view{str, len}};
-}
-
-
-template <>
-struct std::formatter<move2_t> {
-    constexpr auto parse(std::format_parse_context& ctx){
-        return ctx.begin();
-    }
-
-    auto format(move2_t move, std::format_context& ctx) const {
-        return std::format_to(ctx.out(), "{}{}{}", move.from(), move.to(), move.promotion());
-    }
-};
-
-template<typename T>
-struct std::formatter<std::span<T>> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return ctx.begin();
-    }
-
-    auto format(std::span<T> span, std::format_context& ctx) const {
-        for (size_t i = 0; i < span.size(); ++i) {
-            if (i > 0) std::format_to(ctx.out(), "{}", ' ');
-            std::format_to(ctx.out(), "{}", span[i]);
-        }
-        return ctx.out();
-    }
-};
+#include <charconv>
 
 // use once per thread
 struct position_t {
@@ -99,8 +38,8 @@ struct position_t {
 
     bool operator==(const position_t& other) const noexcept = default;
 
-    void make_move(move2_t move) noexcept;
-    void undo_move(move2_t move) noexcept;
+    void make_move(move_t move) noexcept;
+    void undo_move(move_t move) noexcept;
 
     bool can_null_move() const noexcept;
     void make_null_move() noexcept;
@@ -108,11 +47,10 @@ struct position_t {
 
     bitboard attackers(side_e side) const noexcept;
     bitboard attackers(square square) const noexcept;
-    bitboard attackers(square square, side_e side) const noexcept;
 
-    std::span<move2_t> generate_moves(std::span<move2_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept;
+    std::span<move_t> generate_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept;
 
-    int see(const move2_t& move) const noexcept;
+    int see(const move_t& move) const noexcept;
 
     piece operator[](square s) const noexcept {
         return board[s];
@@ -193,7 +131,7 @@ struct position_t {
     }
 
     bool is_no_material() const noexcept {
-        return material[WHITE] <= 300 && by(WPAWN).empty() && material[BLACK] <= 300 && by(BPAWN).empty();
+        return material[WHITE] <= 10300 && by(WPAWN).empty() && material[BLACK] <= 10300 && by(BPAWN).empty();
     }
 
 // private:
@@ -265,12 +203,12 @@ inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied
 
     if (fen_part != fen_parts.end()) {
         std::string_view half_move_part {*fen_part++};
-        std::from_chars(half_move_part.begin(), half_move_part.end(), new_state.half_move);
+        std::from_chars(&*half_move_part.begin(), &*half_move_part.end(), new_state.half_move);
     }
 
     if (fen_part != fen_parts.end()) {
         std::string_view full_move_part {*fen_part++};
-        std::from_chars(full_move_part.begin(), full_move_part.end(), full_move);
+        std::from_chars(&*full_move_part.begin(), &*full_move_part.end(), full_move);
     }
 
     auto king_square = by(side, KING).front();
@@ -303,7 +241,7 @@ inline bitboard position_t::attackers(square square) const noexcept {
     return attackers;
 }
 
-inline std::span<move2_t> position_t::generate_moves(std::span<move2_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept {
+inline std::span<move_t> position_t::generate_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept {
 
     size_t index = 0;
     bitboard checkers = states.back().checkers;
@@ -462,7 +400,7 @@ inline std::span<move2_t> position_t::generate_moves(std::span<move2_t, MAX_MOVE
     return buffer.first(index);
 }
 
-inline void position_t::make_move(move2_t move) noexcept {
+inline void position_t::make_move(move_t move) noexcept {
     state_t new_state = states.back();
 
     square from_square = move.from();
@@ -613,7 +551,7 @@ inline void position_t::make_move(move2_t move) noexcept {
     states.push_back(new_state);
 }
 
-inline void position_t::undo_move(move2_t move) noexcept {
+inline void position_t::undo_move(move_t move) noexcept {
     side = ~side;
 
     square from_square = move.from();
@@ -702,7 +640,7 @@ inline void position_t::undo_move(move2_t move) noexcept {
 
 inline bool position_t::can_null_move() const noexcept {
     bitboard non_pawn_pieces = by(side, KNIGHT, BISHOP) | by(side, ROOK, QUEEN);
-    return !is_check() && !states.back().null_move && !non_pawn_pieces.empty();
+    return !is_check() && !states.back().null_move && non_pawn_pieces.size() > 1 && by(side).size() > 4 && by(~side).size() > 4;
 }
 
 
@@ -732,7 +670,7 @@ inline void position_t::undo_null_move() noexcept {
     states.pop_back();
 }
 
-inline int position_t::see(const move2_t& move) const noexcept {
+inline int position_t::see(const move_t& move) const noexcept {
 
     auto find_least_piece = [this](bitboard board) -> square {
         for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING}) {
@@ -751,23 +689,32 @@ inline int position_t::see(const move2_t& move) const noexcept {
     attackers.reset(move.from());
     occupied.reset(move.from());
 
-    // std::println("attackers: {}", attackers);
+    auto expand_attackers = [&](square from) {
+        switch (board[from].type()) {
+            case PAWN:
+                if (from.file() == move.to().file()) {
+                    attackers |= bitboards::rook_queen(from, occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
+                } else {
+                    attackers |= bitboards::bishop_queen(from, occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
+                }
+                break;
+            case BISHOP:
+                attackers |= bitboards::bishop_queen(from, occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
+                break;
+            case ROOK:
+                attackers |= bitboards::rook_queen(from, occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
+                break;
+            case QUEEN:
+                attackers |= bitboards::bishop_queen(from, occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
+                attackers |= bitboards::rook_queen(from, occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
+                break;
+            default:
+                break;
+        }
+    };
 
-    switch (board[move.from()].type()) {
-    case BISHOP:
-    case PAWN:
-        attackers |= bitboards::bishop_queen(move.from(), occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
-        break;
-    case ROOK:
-        attackers |= bitboards::rook_queen(move.from(), occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
-        break;
-    case QUEEN:
-        attackers |= bitboards::bishop_queen(move.from(), occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
-        attackers |= bitboards::rook_queen(move.from(), occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
-        break;
-    default:
-        break;
-    }
+    // std::println("attackers: {}", attackers);
+    expand_attackers(move.from());
 
     // std::println("attackers: {}", attackers);
 
@@ -776,36 +723,18 @@ inline int position_t::see(const move2_t& move) const noexcept {
 
     gain[0] = type_values[board[move.to()].type()];
 
-    int attacked_piece_value = type_values[board[move.from()].type()];
+    type_e attacked_piece_type = board[move.from()].type();
 
     if (move.promotion() != NO_TYPE) {
         gain[0] += type_values[move.promotion()] - type_values[PAWN];
-        attacked_piece_value = type_values[move.promotion()];
+        attacked_piece_type = move.promotion();
     }
-
-    // switch (move.promotion()) {
-    // case QUEEN:
-    //     gain[0] += type_values[QUEEN] - type_values[PAWN];
-    //     attacked_piece_value = type_values[QUEEN];
-    //     break;
-    // case ROOK:
-    //     gain[0] += type_values[ROOK] - type_values[PAWN];
-    //     attacked_piece_value = type_values[ROOK];
-    //     break;
-    // case BISHOP:
-    //     gain[0] += type_values[BISHOP] - type_values[PAWN];
-    //     attacked_piece_value = type_values[BISHOP];
-    //     break;
-    // case KNIGHT:
-    //     gain[0] += type_values[KNIGHT] - type_values[PAWN];
-    //     attacked_piece_value = type_values[KNIGHT];
-    //     break;
-    // // case move_t::EN_PASSANT:
-    // //     gain[0] += piece_values[PAWN];
-    // //     break;
-    // default:
-    //     break;
-    // }
+    
+    bitboard en_passant = states.back().en_passant;
+    if (!en_passant.empty() && en_passant.front() == move.to()) {
+        gain[0] += type_values[PAWN];
+        attacked_piece_type = PAWN;
+    }
 
     side_e side = ~this->side;
     
@@ -818,26 +747,18 @@ inline int position_t::see(const move2_t& move) const noexcept {
 
         square least_sq = find_least_piece(current);
 
-        gain[depth] = attacked_piece_value - gain[depth-1];
+        gain[depth] = type_values[attacked_piece_type] - gain[depth-1];
 
-        attacked_piece_value = type_values[board[least_sq].type()];
+        attacked_piece_type = board[least_sq].type();
         attackers.reset(least_sq);
         occupied.reset(least_sq);
 
-        switch (board[least_sq].type()) {
-            case BISHOP:
-                attackers |= bitboards::bishop_queen(least_sq, occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
-                break;
-            case ROOK:
-                attackers |= bitboards::rook_queen(least_sq, occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
-                break;
-            case QUEEN:
-                attackers |= bitboards::bishop_queen(least_sq, occupied) & bishop_sliders & by(BISHOP, QUEEN) & occupied;
-                attackers |= bitboards::rook_queen(least_sq, occupied) & rook_sliders & by(ROOK, QUEEN) & occupied;
-                break;
-            default:
-                break;
+        if (attacked_piece_type == PAWN && bitboard{move.to()} & "18"_r) {
+            gain[depth] += type_values[QUEEN] - type_values[PAWN];
+            attacked_piece_type = QUEEN;
         }
+
+        expand_attackers(least_sq);
 
         side = ~side;
         depth++;

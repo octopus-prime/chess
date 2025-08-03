@@ -1,30 +1,33 @@
 #pragma once
 
-#include <node.hpp>
+#include <position.hpp>
 #include "ut.hpp"
+#include <print>
+#include <cassert>
 
-template <side_e side>
-std::size_t perft(const node &current, int depth) noexcept
-{
-    std::size_t count = 0;
-    std::array<move_t, 256> buffer;
-    auto moves = current.generate<side, node::all>(buffer);
-    for (const auto &move : moves)
-    {
-        std::size_t count_ = 0;
-        if (depth <= 1)
-            count_ += 1;
-        else
-        {
-            node succ(current);
-            succ.execute<side>(move);
-            std::array<move_t, 256> buffer2;
-            count_ += depth == 2 ? succ.generate<~side, node::all>(buffer2).size() : perft<~side>(succ, depth - 1);
+struct perft_t {
+    position_t& position;
+
+    size_t operator()(int depth) noexcept {
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_moves(buffer, bitboards::ALL);
+
+        if (depth == 0) {
+            return 1;
         }
-        count += count_;
+
+        if (depth == 1) {
+            return moves.size();
+        }
+
+        return std::ranges::fold_left(moves, size_t{}, [&](size_t acc, const move_t& move) {
+            position.make_move(move);
+            acc += (*this)(depth - 1);
+            position.undo_move(move);
+            return acc;
+        });
     }
-    return count;
-}
+};
 
 class blocking_input {
   std::ifstream stream;
@@ -43,30 +46,30 @@ public:
 };
 
 void test_perft() {
-    static const std::regex epd_regex("(.*),(.*),(.*),(.*),(.*),(.*),(.*)");
-
     namespace ut = boost::ut;
     using ut::operator""_test;
 
     "perft"_test = [] {
         constexpr int depth = 4;
+        auto concurrency = std::jthread::hardware_concurrency();
         blocking_input input{"../epd/perft_long.txt"};
         std::vector<std::jthread> workers{};
-        for (int i = 0; i < std::jthread::hardware_concurrency(); ++i) {
+        workers.reserve(concurrency);
+        for (int i = 0; i < concurrency; ++i) {
             workers.emplace_back([&input]() {
                 char epd[256];
                 while (input.read(epd)) {
-                    std::cmatch match;
-                    if (!std::regex_match(epd, match, epd_regex))
-                        throw std::runtime_error("broken epd");
-                    side_e side;
-                    node node {match[1].str(), side};
-                    size_t expected = std::atoll(match[1 + depth].str().data());
-
-                    size_t count = side == WHITE ? perft<WHITE>(node, depth) : perft<BLACK>(node, depth);
-
-                    // std::println("{}: {} {}", match[1].str(), count, expected);
-                    ut::expect(ut::eq(count, expected)) << match[1].str();
+                    std::string_view epd_view{epd};
+                    auto parts = std::views::split(epd_view, ',');
+                    auto part = parts.begin();
+                    std::string_view pos_part {*part++};
+                    position_t position{pos_part};
+                    std::advance(part, depth - 1);
+                    std::string_view expected_part {*part++};
+                    size_t expected = std::atoll(expected_part.data());
+                    perft_t perft{position};
+                    size_t count = perft(depth);
+                    ut::expect(ut::eq(count, expected)) << pos_part;
                 }
             });
         }
