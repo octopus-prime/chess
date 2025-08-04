@@ -9,18 +9,22 @@ void test_history() {
 
     "history"_test = []() {
         history_t history{};
+        move_t move = "e2e4"_m;
 
-        history.put_all("e2e4"_m, 8, WHITE);
-        ut::expect(ut::eq(history.get("e2e4"_m, 8, WHITE), 0));
+        history.put_all(move);
+        ut::expect(ut::eq(history.get(move), 0));
 
-        history.put_good("e2e4"_m, 8, WHITE);
-        ut::expect(ut::eq(history.get("e2e4"_m, 8, WHITE), 50));
+        history.put_good(move);
+        ut::expect(ut::eq(history.get(move), 50));
 
-        history.put_all("e2e4"_m, 8, WHITE);
-        history.put_good("e2e4"_m, 8, WHITE);
-        ut::expect(ut::eq(history.get("e2e4"_m, 8, WHITE), 66));
+        history.put_all(move);
+        history.put_good(move);
+        ut::expect(ut::eq(history.get(move), 66));
 
-        history.put_all("e2e4"_m, 8, WHITE);
-        ut::expect(ut::eq(history.get("e2e4"_m, 8, WHITE), 50));
+        history.put_all(move);
+        ut::expect(ut::eq(history.get(move), 50));
+
+        history.clear();
+        ut::expect(ut::eq(history.get(move), 0));
     };
 }

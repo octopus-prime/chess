@@ -65,7 +65,7 @@ private:
 
     void ucinewgame(std::string_view) {
         position_ = position_t{};
-        searcher.clean();
+        searcher.clear();
     }
 
     void position(std::string_view args) {
@@ -151,7 +151,7 @@ private:
         if (timer.joinable())
             timer.join();
 
-        searcher.clean();
+        searcher.clear();
     }
 
     void stop(std::string_view) {
@@ -170,9 +170,10 @@ private:
 
     position_t position_;
     transposition_t transposition;
+    killer_t killer;
     history_t history;
     evaluator evaluator;
-    searcher_t searcher{position_, transposition, history, evaluator};
+    searcher_t searcher{position_, transposition, killer, history, evaluator};
     std::jthread search;
     std::jthread timer;
 };

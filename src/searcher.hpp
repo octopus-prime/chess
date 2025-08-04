@@ -2,6 +2,7 @@
 
 #include "position.hpp"
 #include "transposition.hpp"
+#include "killer.hpp"
 #include "history.hpp"
 #include "evaluator.hpp"
 #include <print>
@@ -27,14 +28,16 @@ struct searcher_t {
 
     position_t& position;
     transposition_t& transposition;
+    killer_t& killer;
     history_t& history;
     evaluator& evaluator;
     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
     statistics_t stats;
     std::atomic<bool> should_stop_flag{false};
 
-    void clean() noexcept {
+    void clear() noexcept {
         transposition.clear();
+        killer.clear();
         history.clear();
         stats.nodes = 0;
         stats.max_height = 0;
@@ -190,12 +193,20 @@ struct searcher_t {
 
         std::array<int, position_t::MAX_MOVES_PER_PLY> gains;
         std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
-            return position.see(move) + history.get(move, height, position.get_side());
+            return position.see(move) + history.get(move);//, height, position.get_side());
         });
+
+        auto& killer_moves = killer.get(height);
 
         auto zip = std::views::zip(moves, gains);
         std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
-            return std::get<0>(pair) == best ? INT_MAX : std::get<1>(pair);
+            if (std::get<0>(pair) == best) {
+                return INT_MAX;  // Prioritize the best move
+            }
+            if (std::get<0>(pair) == killer_moves[0] || std::get<0>(pair) == killer_moves[1]) {
+                return INT_MAX - 1;  // Prioritize killer moves
+            }
+            return std::get<1>(pair);
         });
 
         size_t length = 0;
@@ -219,6 +230,7 @@ struct searcher_t {
             //     continue;
             // }
 
+
             position.make_move(move);
             result_t result;
             if (pv_found && !position.is_check()) {
@@ -234,13 +246,17 @@ struct searcher_t {
                 result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
             }
             position.undo_move(move);
-            history.put_all(move, height, position.get_side());
+            history.put_all(move);//, height, position.get_side());
 
             index++;
 
             if (result.score >= beta) {
                 transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                history.put_good(move, height, position.get_side());
+                bool capture = position[move.to()] != NO_PIECE;
+                if (!capture) {
+                    killer.put(move, height);
+                    history.put_good(move);//, height, position.get_side());
+                }
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 return {beta, pv.first(result.pv.size() + 1)};
@@ -258,7 +274,11 @@ struct searcher_t {
 
         if (pv_found) {
             transposition.put(position.hash(), best, alpha, flag_t::EXACT, depth);
-            history.put_good(best, height, position.get_side());
+            bool capture = position[best.to()] != NO_PIECE;
+            if (!capture) {
+                // killer.put(best, height);
+                history.put_good(best); //, height, position.get_side());
+            }
         } else {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
         }

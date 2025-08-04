@@ -41,17 +41,15 @@ public:
 
 	void put(hash_t hash, move_t move, int16_t score, flag_t flag, uint8_t depth) noexcept {
 		entry_t& entry = entries[hash % entries.size()];
-		if ((depth >= entry.depth))// || (depth == entry.depth && score > entry.score))
-			entry = {hash, move, score, flag, depth};
+        if (entry.flag == UNKNOWN || entry.hash == hash || depth > entry.depth) {
+            entry = {hash, move, score, flag, depth};
+        }
 	}
 
-	const entry_t* get(hash_t hash) const noexcept {
-		const entry_t& entry = entries[hash % entries.size()];
-		if (entry.hash == hash)
-			return &entry;
-		else
-			return nullptr;
-	}
+    const entry_t* get(hash_t hash) const noexcept {
+        const entry_t& entry = entries[hash % entries.size()];
+        return (entry.hash == hash) ? &entry : nullptr;
+    }
 
 	size_t full() const noexcept {
 		return 1000.0 * std::ranges::count_if(entries, [](auto&& e){ return e.flag != UNKNOWN; }) / entries.size();
