@@ -198,22 +198,59 @@ struct searcher_t {
 
         auto& killer_moves = killer.get(height);
 
-        auto zip = std::views::zip(moves, gains);
-        std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
-            if (std::get<0>(pair) == best) {
-                return INT_MAX;  // Prioritize the best move
+        // auto zip = std::views::zip(moves, gains);
+        // std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
+        //     if (std::get<0>(pair) == best) {
+        //         return INT_MAX;  // Prioritize the best move
+        //     }
+        //     if (std::get<0>(pair) == killer_moves[0] || std::get<0>(pair) == killer_moves[1]) {
+        //         return INT_MAX - 1;  // Prioritize killer moves
+        //     }
+        //     return std::get<1>(pair);
+        // });
+
+            std::array<int, position_t::MAX_MOVES_PER_PLY> see_evals;
+            std::array<int, position_t::MAX_MOVES_PER_PLY> history_evals;
+            auto blob = std::views::zip(moves, see_evals, history_evals);
+
+            for (auto&& [move, see_eval, history_eval] : blob) {
+                see_eval = position.see(move);
+                history_eval = history.get(move);
             }
-            if (std::get<0>(pair) == killer_moves[0] || std::get<0>(pair) == killer_moves[1]) {
-                return INT_MAX - 1;  // Prioritize killer moves
-            }
-            return std::get<1>(pair);
-        });
+
+            auto best_tail = std::ranges::partition(blob, [&](const auto& tuple) {
+                return std::get<0>(tuple) == best;
+            });
+
+            auto captures_tail = std::ranges::partition(best_tail, [&](const auto& tuple) {
+                return std::get<1>(tuple) > 0;
+            });
+
+            std::ranges::sort(best_tail.begin(), captures_tail.begin(), std::greater<>{}, [&](const auto& tuple) {
+                return std::get<1>(tuple);
+            });
+
+            auto killer_tail = std::ranges::partition(captures_tail, [&](const auto& tuple) {
+                return std::get<1>(tuple) == 0 && (std::get<0>(tuple) == killer_moves[0] || std::get<0>(tuple) == killer_moves[1]);
+            });
+
+            auto history_tail = std::ranges::partition(killer_tail, [&](const auto& tuple) {
+                return std::get<1>(tuple) == 0;
+            });
+
+            std::ranges::sort(killer_tail.begin(), history_tail.begin(), std::greater<>{}, [&](const auto& tuple) {
+                return std::get<2>(tuple);
+            });
+
+            std::ranges::sort(history_tail.begin(), history_tail.end(), std::greater<>{}, [&](const auto& tuple) {
+                return std::get<1>(tuple);
+            });
 
         size_t length = 0;
         bool pv_found = false;
         // bool check = !position.is_check();
         size_t index = 0;
-        for (auto&& [move, gain] : zip) {
+        for (auto&& [move, gain, history_eval] : blob) {
 
             if (height == 0 && depth > 6) {
                 std::println("info currmove {} currmovenumber {}", move, index + 1);
