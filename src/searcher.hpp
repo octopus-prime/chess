@@ -57,14 +57,20 @@ struct searcher_t {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
+        if (position.is_check()) {
+            stats.nodes--;
+            std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
+            return (*this)(alpha, beta, height, 1, pv_buffer).score;
+        }
+
         if (position.is_no_material()) {
             return 0;
         }
 
         side_e side = position.get_side();
 
-        // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        int stand_pat = position.get_material() + evaluator.evaluate(position); // / 8;
+        int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
+        // int stand_pat = position.get_material() + evaluator.evaluate(position); // / 8;
         // int stand_pat = evaluator.evaluate(position) / 8;
 
         // // Prevent Q-search explosion
@@ -79,10 +85,10 @@ struct searcher_t {
             alpha = stand_pat;
         }
 
-        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_moves(buffer, position.by(~side));
+        std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_active_moves(buffer);
 
-        std::array<int, position_t::MAX_MOVES_PER_PLY> gains;
+        std::array<int, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
         std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
             return position.see(move);
         });
@@ -125,7 +131,7 @@ struct searcher_t {
         }
 
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_moves(buffer, bitboards::ALL);
+        std::span<move_t> moves = position.generate_all_moves(buffer);
 
         if (moves.empty()) {
             return {position.is_check() ? -30000 + height : 0, {}};

@@ -14,6 +14,7 @@ struct position_t {
 
     enum {
         MAX_MOVES_PER_PLY = 218,
+        MAX_ACTIVE_MOVES_PER_PLY = 48,
         MAX_MOVES_PER_GAME = 1024
     };
 
@@ -33,6 +34,8 @@ struct position_t {
         bool operator==(const state_t& other) const noexcept = default;
     };
 
+    constexpr static std::string_view STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv;
+
     position_t() noexcept;
     position_t(std::string_view fen) noexcept;
 
@@ -48,11 +51,16 @@ struct position_t {
     bitboard attackers(side_e side) const noexcept;
     bitboard attackers(square square) const noexcept;
 
-    std::span<move_t> generate_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept;
+    std::span<move_t> generate_all_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer) const noexcept {
+        return generate_moves(buffer, bitboards::ALL, 0ull);
+    }
+
+    std::span<move_t> generate_active_moves(std::span<move_t, MAX_ACTIVE_MOVES_PER_PLY> buffer) const noexcept {
+        bitboard promotion_targets = side == WHITE ? by(side, PAWN) << 8 & ~by() & "8"_r : by(side, PAWN) >> 8 & ~by() & "1"_r;
+        return generate_moves(buffer, by(~side), promotion_targets);
+    }
 
     int see(const move_t& move) const noexcept;
-
-    void setup(std::string_view fen) noexcept;
 
     position_t& operator=(std::string_view fen) noexcept {
         board.fill(NO_PIECE);
@@ -148,7 +156,9 @@ struct position_t {
         return material[WHITE] <= 10300 && by(WPAWN).empty() && material[BLACK] <= 10300 && by(BPAWN).empty();
     }
 
-// private:
+private:
+    std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets) const noexcept;
+    void setup(std::string_view fen) noexcept;
 
     std::array<piece, SQUARE_MAX> board;
     std::array<bitboard, 7> occupied_by_type;
@@ -159,7 +169,7 @@ struct position_t {
     std::vector<state_t> states;
 };
 
-inline position_t::position_t() noexcept : position_t{"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv} {
+inline position_t::position_t() noexcept : position_t{STARTPOS} {
 }
 
 inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied_by_type{}, occupied_by_side{}, material{}, full_move{}, side{WHITE}, states{} {
@@ -260,7 +270,7 @@ inline bitboard position_t::attackers(square square) const noexcept {
     return attackers;
 }
 
-inline std::span<move_t> position_t::generate_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer, bitboard valid_targets) const noexcept {
+inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets) const noexcept {
 
     size_t index = 0;
     bitboard checkers = states.back().checkers;
@@ -369,7 +379,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t, MAX_MOVES_
         bitboard push = pawns << 8 & ~by();
         bitboard targets;
 
-        targets = push & valid_targets;
+        targets = push & (valid_targets | promotion_targets);
         generate_normal(targets & ~"8"_r, -8);
         generate_promotion(targets & "8"_r, -8);
 
@@ -387,7 +397,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t, MAX_MOVES_
         bitboard push = pawns >> 8 & ~by();
         bitboard targets;
 
-        targets = push & valid_targets;
+        targets = push & (valid_targets | promotion_targets);
         generate_normal(targets & ~"1"_r, +8);
         generate_promotion(targets & "1"_r, +8);
 

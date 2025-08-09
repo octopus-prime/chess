@@ -10,7 +10,7 @@ struct perft_t {
 
     size_t operator()(int depth) noexcept {
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_moves(buffer, bitboards::ALL);
+        std::span<move_t> moves = position.generate_all_moves(buffer);
 
         if (depth == 0) {
             return 1;

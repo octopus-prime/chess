@@ -64,7 +64,7 @@ private:
     }
 
     void ucinewgame(std::string_view) {
-        position_ = position_t{};
+        position_ = position_t::STARTPOS;
         searcher.clear();
     }
 
@@ -76,7 +76,7 @@ private:
 
         std::string_view position_part {*part++};
         if (position_part == "startpos"sv) {
-            position_ = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv;
+            position_ = position_t::STARTPOS;
         } else {
             position_part.remove_prefix("fen "sv.size());
             position_ = position_part;

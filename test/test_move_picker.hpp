@@ -19,7 +19,7 @@ void test_move_picker() {
         }
 
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        auto moves = position.generate_moves(buffer, bitboards::ALL);
+        auto moves = position.generate_all_moves(buffer);
         move_picker_t move_picker{position, history, killers, best, moves};
 
         auto tt_moves = move_picker(move_picker_t::TT_MOVES);
