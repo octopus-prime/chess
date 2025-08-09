@@ -5,6 +5,7 @@
 #include "killer.hpp"
 #include "history.hpp"
 #include "evaluator.hpp"
+#include "move_picker.hpp"
 #include <print>
 #include <chrono>
 
@@ -63,7 +64,7 @@ struct searcher_t {
         side_e side = position.get_side();
 
         // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        int stand_pat = position.get_material() + evaluator.evaluate(position);// / 8;
+        int stand_pat = position.get_material() + evaluator.evaluate(position); // / 8;
         // int stand_pat = evaluator.evaluate(position) / 8;
 
         // // Prevent Q-search explosion
@@ -130,9 +131,9 @@ struct searcher_t {
             return {position.is_check() ? -30000 + height : 0, {}};
         }
 
-        // if (position.is_check() || moves.size() == 1) {
-        //     depth++;
-        // }
+        if (depth == 0 && (position.is_check() || moves.size() == 1)) {
+            depth++;
+        }
 
         if (depth == 0) {
             stats.nodes--;
@@ -147,7 +148,7 @@ struct searcher_t {
             if (entry->depth >= depth) {
                 switch (entry->flag) {
                 case flag_t::EXACT:
-                    pv[0] = best;
+                    pv.front() = best;
                     return {entry->score, pv.first(1)};
                 case flag_t::LOWER:
                     if (entry->score > alpha)
@@ -161,7 +162,7 @@ struct searcher_t {
                     break;
                 }
                 if (alpha >= beta) {
-                    pv[0] = best;
+                    pv.front() = best;
                     return {beta, pv.first(1)};
                 }
             }
@@ -181,76 +182,23 @@ struct searcher_t {
                 }
             }
         }
-
         
-        // if (best == move_t{} && depth > 4) {
-        //     // best = foo(alpha, beta, height, depth - 2, pv_buffer);
-        //     auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
-        //     if (!pv.empty()) {
-        //         best = pv.front();
-        //     }
-        // }
-
-        std::array<int, position_t::MAX_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
-            return position.see(move) + history.get(move);//, height, position.get_side());
-        });
-
-        auto& killer_moves = killer.get(height);
-
-        // auto zip = std::views::zip(moves, gains);
-        // std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
-        //     if (std::get<0>(pair) == best) {
-        //         return INT_MAX;  // Prioritize the best move
-        //     }
-        //     if (std::get<0>(pair) == killer_moves[0] || std::get<0>(pair) == killer_moves[1]) {
-        //         return INT_MAX - 1;  // Prioritize killer moves
-        //     }
-        //     return std::get<1>(pair);
-        // });
-
-            std::array<int, position_t::MAX_MOVES_PER_PLY> see_evals;
-            std::array<int, position_t::MAX_MOVES_PER_PLY> history_evals;
-            auto blob = std::views::zip(moves, see_evals, history_evals);
-
-            for (auto&& [move, see_eval, history_eval] : blob) {
-                see_eval = position.see(move);
-                history_eval = history.get(move);
+        if (best == move_t{} && depth > 4) {
+            auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+            if (!pv.empty()) {
+                best = pv.front();
             }
+        }
 
-            auto best_tail = std::ranges::partition(blob, [&](const auto& tuple) {
-                return std::get<0>(tuple) == best;
-            });
-
-            auto captures_tail = std::ranges::partition(best_tail, [&](const auto& tuple) {
-                return std::get<1>(tuple) > 0;
-            });
-
-            std::ranges::sort(best_tail.begin(), captures_tail.begin(), std::greater<>{}, [&](const auto& tuple) {
-                return std::get<1>(tuple);
-            });
-
-            auto killer_tail = std::ranges::partition(captures_tail, [&](const auto& tuple) {
-                return std::get<1>(tuple) == 0 && (std::get<0>(tuple) == killer_moves[0] || std::get<0>(tuple) == killer_moves[1]);
-            });
-
-            auto history_tail = std::ranges::partition(killer_tail, [&](const auto& tuple) {
-                return std::get<1>(tuple) == 0;
-            });
-
-            std::ranges::sort(killer_tail.begin(), history_tail.begin(), std::greater<>{}, [&](const auto& tuple) {
-                return std::get<2>(tuple);
-            });
-
-            std::ranges::sort(history_tail.begin(), history_tail.end(), std::greater<>{}, [&](const auto& tuple) {
-                return std::get<1>(tuple);
-            });
+        move_picker_t move_picker(position, history, killer.get(height), best, moves);
 
         size_t length = 0;
         bool pv_found = false;
+        move_picker_t::phase_e pv_phase = move_picker_t::TT_MOVES;
         // bool check = !position.is_check();
         size_t index = 0;
-        for (auto&& [move, gain, history_eval] : blob) {
+        for (auto&& phase : move_picker_t::ALL) {
+        for (auto&& [move, see_eval] : move_picker(phase)) {
 
             if (height == 0 && depth > 6) {
                 std::println("info currmove {} currmovenumber {}", move, index + 1);
@@ -270,29 +218,30 @@ struct searcher_t {
 
             position.make_move(move);
             result_t result;
-            if (pv_found && !position.is_check()) {
+            if (pv_found /* && !position.is_check()*/) {
                 // if (depth > R + 2 && index > moves.size() / 2 && gain <= 0) {
                 //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
                 // } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
                 // }
                 if (result.score >= alpha) {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -(*this)(-beta, -result.score, height + 1, depth - 1, pv_buffer);
                 }
             } else {
                 result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
             }
             position.undo_move(move);
-            history.put_all(move);//, height, position.get_side());
+            if (phase == move_picker_t::QUIET_MOVES) {
+                history.put_all(move);
+            }
 
             index++;
 
             if (result.score >= beta) {
                 transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                bool capture = position[move.to()] != NO_PIECE;
-                if (!capture) {
+                if (phase == move_picker_t::QUIET_MOVES) {
                     killer.put(move, height);
-                    history.put_good(move);//, height, position.get_side());
+                    history.put_good(move);
                 }
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
@@ -303,32 +252,25 @@ struct searcher_t {
                 alpha = result.score;
                 best = move;
                 pv_found = true;
+                pv_phase = phase;
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 length = result.pv.size() + 1;
             }
         }
+    }
 
         if (pv_found) {
             transposition.put(position.hash(), best, alpha, flag_t::EXACT, depth);
-            bool capture = position[best.to()] != NO_PIECE;
-            if (!capture) {
-                // killer.put(best, height);
-                history.put_good(best); //, height, position.get_side());
+            if (pv_phase == move_picker_t::QUIET_MOVES) {
+                killer.put(best, height);
+                history.put_good(best);
             }
         } else {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
         }
 
         return {alpha, pv.first(length)};
-    }
-
-    move_t foo(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-        move_t best;
-        for (int iteration = 1; iteration <= depth; ++iteration) {
-            best = (*this)(alpha, beta, height, iteration, pv).pv.front();
-        }
-        return best;
     }
 
     move_t operator()(int depth) {

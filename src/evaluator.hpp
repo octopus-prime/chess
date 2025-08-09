@@ -70,7 +70,7 @@ public:
         const Entry& t = refresh(position, position.get_side());
         const Entry& o = refresh(position, ~position.get_side());
         int raw_nnue = nnue.evaluate(t, o, position.by().size());// & ~15;
-        float sigmoid_value = sigmoid(raw_nnue, 40000.f);
+        float sigmoid_value = sigmoid(raw_nnue, 8000.f);
         return sigmoid_to_cp(sigmoid_value, 500);
         // return raw_nnue;
     }

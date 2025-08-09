@@ -9,6 +9,7 @@
 #include "test_history.hpp"
 #include "test_killer.hpp"
 #include "test_transposition.hpp"
+#include "test_move_picker.hpp"
 
 #include "nnue/test_affine_tranform.hpp"
 #include "nnue/test_clipped_relu.hpp"
@@ -28,6 +29,7 @@ int main() {
     test_history();
     test_killer();
     test_transposition();
+    test_move_picker();
 
     nnue::test_clipped_relu();
     nnue::test_sqr_clipped_relu();

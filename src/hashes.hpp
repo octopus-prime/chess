@@ -28,33 +28,26 @@ struct hashes {
     }
 
     static hash_t castle(bitboard x) noexcept {
-        static const std::array<hash_t , 16> lookup = [] {
-            std::array<hash_t , 16> lookup;
-            std::ranges::generate(lookup, generate);
-            return lookup;
-        }();
-        auto c = _pext_u64(x, "a1h1a8h8"_b);
-        return lookup[c];
+        return x;
+        // static const std::array<hash_t , 16> lookup = [] {
+        //     std::array<hash_t , 16> lookup;
+        //     std::ranges::generate(lookup, generate);
+        //     return lookup;
+        // }();
+        // auto c = _pext_u64(x, "a1h1a8h8"_b);
+        // return lookup[c];
     }
 
     static hash_t en_passant(bitboard x) noexcept {
-        static const std::array<hash_t, 64> lookup = [] {
-            std::array<hash_t, 64> lookup;
-            std::ranges::generate(lookup, generate);
-            return lookup;
-        }();
-        if (x.empty())
-            return 0;
-        return lookup[x.front()];
-    }
-
-    static uint64_t  color(side_e side) noexcept {
-        static const std::array<uint64_t , 2> lookup = [] {
-            std::array<uint64_t , 2> lookup;
-            std::ranges::generate(lookup, generate);
-            return lookup;
-        }();
-        return lookup[side];
+        return x;
+        // static const std::array<hash_t, 64> lookup = [] {
+        //     std::array<hash_t, 64> lookup;
+        //     std::ranges::generate(lookup, generate);
+        //     return lookup;
+        // }();
+        // if (x.empty())
+        //     return 0;
+        // return lookup[x.front()];
     }
 
     static hash_t side() noexcept {
