@@ -41,6 +41,7 @@ void test_position() {
     "see"_test = []() {
         std::ifstream stream{"../epd/see.txt"};
         std::array<char, 256> epd;
+        position_t position;
         while (stream.good()) {
             stream.getline(epd.data(), epd.size());
             std::string_view epd_view{epd.data()};
@@ -53,7 +54,7 @@ void test_position() {
             auto part = parts.begin();
 
             std::string_view fen_part{*part++};
-            position_t position{fen_part};
+            position = fen_part;
 
             std::string_view move_part{*part++};
             move_t move{move_part};

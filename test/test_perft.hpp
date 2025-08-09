@@ -58,12 +58,13 @@ void test_perft() {
         for (int i = 0; i < concurrency; ++i) {
             workers.emplace_back([&input]() {
                 char epd[256];
+                position_t position;
                 while (input.read(epd)) {
                     std::string_view epd_view{epd};
                     auto parts = std::views::split(epd_view, ',');
                     auto part = parts.begin();
                     std::string_view pos_part {*part++};
-                    position_t position{pos_part};
+                    position = pos_part;
                     std::advance(part, depth - 1);
                     std::string_view expected_part {*part++};
                     size_t expected = std::atoll(expected_part.data());

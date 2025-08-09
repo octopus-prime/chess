@@ -76,10 +76,10 @@ private:
 
         std::string_view position_part {*part++};
         if (position_part == "startpos"sv) {
-            position_ = position_t{};
+            position_ = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv;
         } else {
             position_part.remove_prefix("fen "sv.size());
-            position_ = position_t{position_part};
+            position_ = position_part;
         }
 
         if (part != parts.end()) {

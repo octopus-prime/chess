@@ -52,6 +52,20 @@ struct position_t {
 
     int see(const move_t& move) const noexcept;
 
+    void setup(std::string_view fen) noexcept;
+
+    position_t& operator=(std::string_view fen) noexcept {
+        board.fill(NO_PIECE);
+        occupied_by_type.fill(0);
+        occupied_by_side.fill(0);
+        material.fill(0);
+        full_move = 0;
+        side = WHITE;
+        states.clear();
+        setup(fen);
+        return *this;
+    }
+
     piece operator[](square s) const noexcept {
         return board[s];
     }
@@ -135,10 +149,11 @@ struct position_t {
     }
 
 // private:
-    piece board[64];
-    bitboard occupied_by_type[7];
-    bitboard occupied_by_side[2];
-    int16_t material[2];
+
+    std::array<piece, SQUARE_MAX> board;
+    std::array<bitboard, 7> occupied_by_type;
+    std::array<bitboard, SIDE_MAX> occupied_by_side;
+    std::array<int16_t, SIDE_MAX> material;
     uint16_t full_move;
     side_e side;
     std::vector<state_t> states;
@@ -148,6 +163,10 @@ inline position_t::position_t() noexcept : position_t{"rnbqkbnr/pppppppp/8/8/8/8
 }
 
 inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied_by_type{}, occupied_by_side{}, material{}, full_move{}, side{WHITE}, states{} {
+    setup(fen);
+}
+
+inline void position_t::setup(std::string_view fen) noexcept {
     constexpr auto castle_lookup = [](char ch) -> bitboard {
         switch (ch) {
             case 'K': return "h1"_b; case 'k': return "h8"_b;
