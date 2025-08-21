@@ -91,6 +91,7 @@ private:
     }
 
     void go(std::string_view args) {
+        // move_picker_t::counter2 = 0; // Reset counter for each go command
         args.remove_prefix("go "sv.size());
 
         auto parts = std::views::split(args, ' ');
@@ -123,8 +124,9 @@ private:
         if (part != parts.end()) {
             part++; //movestogo
             std::string_view movestogo_part {*part++};
-            auto movestogo = std::stoll(movestogo_part.data()) + 1;
-            timetogo += timeleft / movestogo;
+            std::int64_t movestogo;
+            std::from_chars(&*movestogo_part.begin(), &*movestogo_part.end(), movestogo);
+            timetogo += timeleft / (movestogo + 1);
         } else {
             timetogo += timeleft * 5 / 100;
         }
@@ -143,7 +145,7 @@ private:
                 if (searcher.should_stop()) {
                     break;
                 }
-                std::this_thread::sleep_for(1ms);
+                std::this_thread::sleep_for(10ms);
             }
             searcher.request_stop();
         }};
@@ -170,10 +172,9 @@ private:
 
     position_t position_;
     transposition_t transposition;
-    killer_t killer;
-    history_t history;
+    history_t history{position_};
     evaluator evaluator;
-    searcher_t searcher{position_, transposition, killer, history, evaluator};
+    searcher_t searcher{position_, transposition, history, evaluator};
     std::jthread search;
     std::jthread timer;
 };

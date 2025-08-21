@@ -1,7 +1,6 @@
 #pragma once
 
 #include <nnue/common.hpp>
-#include <nnue/accumulator.hpp>
 
 namespace nnue {
 
@@ -48,13 +47,10 @@ void read_leb_128(std::istream& stream, const std::span<T, N> buffer) {
             }
         } while (shift < sizeof(T) * 8);
     }
-    // assert(bytes_left == 0);
 }
 
 template <std::size_t N>
 class basic_features {
-    using Accumulator = basic_accumulator<N>;
-
     constexpr static inline std::size_t L0 = 22528;
     constexpr static inline std::size_t L1 = N;
 
@@ -92,36 +88,14 @@ public:
             value *= 2;
     }
 
-    void refresh(const std::span<std::int16_t, N> new_accumulation, const std::span<std::int32_t, 8> new__psqrt_accumulation, const std::span<const std::uint16_t> active_features) const noexcept {
+    void update(const std::span<std::int16_t, N> the_accumulation, const std::span<std::int32_t, 8> the_psqrt_accumulation, const std::span<const std::uint16_t> removed_features, const std::span<const std::uint16_t> added_features) const noexcept {
         constexpr auto chunk = std::min(std::size_t{16}, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
         static_assert(N % (chunk * sizeof(__m256i) / sizeof(std::int16_t)) == 0);
-        const auto accumulation = span_cast<__m256i>(new_accumulation);
-        const auto biases = span_cast<const __m256i>(std::span{biases0});
+        const auto accumulation = span_cast<__m256i>(the_accumulation);
         const auto weights = [this](const auto feature){ return span_cast<const __m256i>(std::span{weights0[feature]}); };
         for (auto index = 0ul; index < accumulation.size(); index += chunk) {
             __m256i regs[chunk];
-            std::ranges::copy(biases.subspan(index, chunk), regs);
-            for (auto feature : active_features)
-                std::ranges::transform(regs, weights(feature).subspan(index, chunk), regs, _mm256_add_epi16);
-            std::ranges::copy(regs, accumulation.subspan(index, chunk).begin());
-        }
-
-        const auto psqrt_accumulation = span_cast<__m256i>(new__psqrt_accumulation);
-        const auto psqrt_weights = [this](const auto feature){ return span_cast<const __m256i>(std::span{psqrt_weights0[feature]}); };
-        std::ranges::fill(psqrt_accumulation, _mm256_setzero_si256());
-        for (auto feature : active_features)
-            std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_add_epi32);
-    }
-
-    void update(const std::span<std::int16_t, N> new_accumulation, const std::span<std::int32_t, 8> new__psqrt_accumulation, const std::span<const std::int16_t, N> prev_accumulation, const std::span<const std::int32_t, 8> prev__psqrt_accumulation, const std::span<const std::uint16_t> removed_features, const std::span<const std::uint16_t> added_features) const noexcept {
-        constexpr auto chunk = std::min(std::size_t{16}, N * sizeof(std::int16_t) / sizeof(__m256i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
-        static_assert(N % (chunk * sizeof(__m256i) / sizeof(std::int16_t)) == 0);
-        const auto accumulation = span_cast<__m256i>(new_accumulation);
-        const auto previous = span_cast<const __m256i>(prev_accumulation);
-        const auto weights = [this](const auto feature){ return span_cast<const __m256i>(std::span{weights0[feature]}); };
-        for (auto index = 0ul; index < accumulation.size(); index += chunk) {
-            __m256i regs[chunk];
-            std::ranges::copy(previous.subspan(index, chunk), regs);
+            std::ranges::copy(accumulation.subspan(index, chunk), regs);
             for (auto feature : removed_features)
                 std::ranges::transform(regs, weights(feature).subspan(index, chunk), regs, _mm256_sub_epi16);
             for (auto feature : added_features)
@@ -129,22 +103,20 @@ public:
             std::ranges::copy(regs, accumulation.subspan(index, chunk).begin());
         }
 
-        const auto psqrt_accumulation = span_cast<__m256i>(new__psqrt_accumulation);
-        const auto previous_psqrt = span_cast<const __m256i>(prev__psqrt_accumulation);
+        const auto psqrt_accumulation = span_cast<__m256i>(the_psqrt_accumulation);
         const auto psqrt_weights = [this](const auto feature){ return span_cast<const __m256i>(std::span{psqrt_weights0[feature]}); };
-        std::ranges::copy(previous_psqrt, psqrt_accumulation.begin());
         for (auto feature : removed_features)
             std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_sub_epi32);
         for (auto feature : added_features)
             std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_add_epi32);
     }
 
-    void initialize(const std::span<std::int16_t, N> new_accumulation, const std::span<std::int32_t, 8> new__psqrt_accumulation) const noexcept {
-        const auto accumulation = span_cast<__m256i>(new_accumulation);
+    void initialize(const std::span<std::int16_t, N> the_accumulation, const std::span<std::int32_t, 8> the_psqrt_accumulation) const noexcept {
+        const auto accumulation = span_cast<__m256i>(the_accumulation);
         const auto biases = span_cast<const __m256i>(std::span{biases0});
         std::ranges::copy(biases, accumulation.begin());
 
-        const auto psqrt_accumulation = span_cast<__m256i>(new__psqrt_accumulation);
+        const auto psqrt_accumulation = span_cast<__m256i>(the_psqrt_accumulation);
         std::ranges::fill(psqrt_accumulation, _mm256_setzero_si256());
     }
 };

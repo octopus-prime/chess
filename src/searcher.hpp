@@ -2,7 +2,6 @@
 
 #include "position.hpp"
 #include "transposition.hpp"
-#include "killer.hpp"
 #include "history.hpp"
 #include "evaluator.hpp"
 #include "move_picker.hpp"
@@ -29,7 +28,6 @@ struct searcher_t {
 
     position_t& position;
     transposition_t& transposition;
-    killer_t& killer;
     history_t& history;
     evaluator& evaluator;
     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
@@ -38,7 +36,6 @@ struct searcher_t {
 
     void clear() noexcept {
         transposition.clear();
-        killer.clear();
         history.clear();
         stats.nodes = 0;
         stats.max_height = 0;
@@ -60,7 +57,7 @@ struct searcher_t {
         if (position.is_check()) {
             stats.nodes--;
             std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-            return (*this)(alpha, beta, height, 1, pv_buffer).score;
+            return (*this)(alpha, beta, height, 0, pv_buffer).score;
         }
 
         if (position.is_no_material()) {
@@ -69,9 +66,9 @@ struct searcher_t {
 
         side_e side = position.get_side();
 
-        int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        // int stand_pat = position.get_material() + evaluator.evaluate(position); // / 8;
-        // int stand_pat = evaluator.evaluate(position) / 8;
+        // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
+        // int stand_pat = position.get_material() + evaluator.evaluate(position) / 8;
+        int stand_pat = evaluator.evaluate(position);
 
         // // Prevent Q-search explosion
         // if (q_depth > 6) {
@@ -88,19 +85,26 @@ struct searcher_t {
         std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_active_moves(buffer);
 
-        std::array<int, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
+        std::array<int16_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
         std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
             return position.see(move);
         });
 
         auto zip = std::views::zip(moves, gains);
+
+        // auto tail = std::ranges::partition(zip, [&](const auto& pair) {
+        //     return std::get<1>(pair) >= 0;  // Keep only non-negative gains
+        // });
+
+        // auto foo = std::ranges::subrange(zip.begin(), tail.begin());
+
         std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
             return std::get<1>(pair);
         });
 
         for (auto&& [move, gain] : zip) {
-            if (gain < 0) {
-                break;  // Skip moves that lose material
+            if (gain < 0 && !position.check(move)) {
+                continue;  // Skip moves that lose material
             }
 
             position.make_move(move);
@@ -174,10 +178,12 @@ struct searcher_t {
             }
         }
 
+        int old_alpha = alpha;
+
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        const int R = depth / 4;
-        if (depth > R + 2 && moves.size() > 8 && position.can_null_move()) {
+        const int R = depth / 3;
+        if (depth > 4 && moves.size() > 8 && position.can_null_move()) {
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
@@ -189,30 +195,41 @@ struct searcher_t {
             }
         }
         
-        if (best == move_t{} && depth > 4) {
-            auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
-            if (!pv.empty()) {
-                best = pv.front();
-            }
-        }
+        // if (best == move_t{} && depth > 4) {
+        //     auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+        //     if (!pv.empty()) {
+        //         best = pv.front();
+        //     }
+        // }
 
-        move_picker_t move_picker(position, history, killer.get(height), best, moves);
-
+        move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
         bool pv_found = false;
         move_picker_t::phase_e pv_phase = move_picker_t::TT_MOVES;
-        // bool check = !position.is_check();
+        bool position_check = position.is_check();
         size_t index = 0;
         for (auto&& phase : move_picker_t::ALL) {
-        for (auto&& [move, see_eval] : move_picker(phase)) {
+            size_t phase_index = 0;
+            auto phase_moves = move_picker(phase);
+        for (auto&& [move, eval] : phase_moves) {
+            auto see_eval = eval.see;
+            bool move_check = position.check(move);
 
             if (height == 0 && depth > 6) {
+                // std::println("info currmove {} currmovenumber {} see {} hist {}", move, index + 1, eval.see, eval.history);
                 std::println("info currmove {} currmovenumber {}", move, index + 1);
                 std::fflush(stdout);
             }
 
-            // if (depth == 1 && pv_found && !position.is_check() && position.get_material() + gain + 300 < alpha) {
+            // if (depth <= 4 && pv_found && !position_check && !move_check && position.get_material() + see_eval + 200 * depth < alpha) {
             //     index++;
+            //     phase_index++;
+            //     continue;
+            // }
+
+            // if (depth == 1 && pv_found && !position_check && position.get_material() + see_eval + 150 < alpha) {
+            //     index++;
+            //     phase_index++;
             //     continue;
             // }
 
@@ -224,31 +241,26 @@ struct searcher_t {
 
             position.make_move(move);
             result_t result;
-            if (pv_found /* && !position.is_check()*/) {
-                // if (depth > R + 2 && index > moves.size() / 2 && gain <= 0) {
-                //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
-                // } else {
+            if (pv_found) {
+                bool reduced = ((phase == move_picker_t::QUIET_MOVES && phase_index > phase_moves.size() / 3) || phase == move_picker_t::BAD_CAPTURE_MOVES);
+                if (depth > 4 && !position_check && !move_check && reduced) {
+                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
+                } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                // }
-                if (result.score >= alpha) {
+                }
+                if (result.score >= alpha && result.score < beta) {
                     result = -(*this)(-beta, -result.score, height + 1, depth - 1, pv_buffer);
                 }
             } else {
                 result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
             }
             position.undo_move(move);
-            if (phase == move_picker_t::QUIET_MOVES) {
-                history.put_all(move);
-            }
-
             index++;
+            phase_index++;
 
             if (result.score >= beta) {
                 transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                if (phase == move_picker_t::QUIET_MOVES) {
-                    killer.put(move, height);
-                    history.put_good(move);
-                }
+                history.put(move, height, 4 * depth);
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 return {beta, pv.first(result.pv.size() + 1)};
@@ -262,16 +274,16 @@ struct searcher_t {
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 length = result.pv.size() + 1;
+                // history.put(best, height, depth * depth / 4);
+            } else {
+                // history.put(move, height, -depth * depth / 4);
             }
         }
     }
 
         if (pv_found) {
             transposition.put(position.hash(), best, alpha, flag_t::EXACT, depth);
-            if (pv_phase == move_picker_t::QUIET_MOVES) {
-                killer.put(best, height);
-                history.put_good(best);
-            }
+            history.put(best, height, depth);
         } else {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
         }
@@ -297,6 +309,7 @@ struct searcher_t {
             if (result.score < -29000 || result.score > 29000) {
                 break;
             }
+            history.age();
         }
         return best;
     }

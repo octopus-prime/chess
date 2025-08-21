@@ -68,11 +68,6 @@ constexpr std::uint16_t KingBuckets[SIDE_MAX][SQUARE_MAX] = {
 };
 #undef B
 
-template<int Perspective>
-constexpr std::uint16_t make_index(const std::uint16_t king_square, const std::uint16_t piece_square, const std::uint16_t piece_type) noexcept {
-    return (piece_square ^ OrientTBL[Perspective][king_square]) + PieceSquareIndex[Perspective][piece_type] + KingBuckets[Perspective][king_square];
-}
-
 constexpr std::uint16_t make_index(const std::uint16_t king_square, const std::uint16_t piece_square, const std::uint16_t piece_type, int Perspective) noexcept {
     return (piece_square ^ OrientTBL[Perspective][king_square]) + PieceSquareIndex[Perspective][piece_type] + KingBuckets[Perspective][king_square];
 }

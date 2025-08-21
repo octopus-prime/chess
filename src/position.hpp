@@ -29,7 +29,8 @@ struct position_t {
         hash_t hash;
         uint8_t half_move;
         piece captured;    
-        bool null_move;
+        // bool null_move;
+        move_t last_move;
 
         bool operator==(const state_t& other) const noexcept = default;
     };
@@ -52,15 +53,15 @@ struct position_t {
     bitboard attackers(square square) const noexcept;
 
     std::span<move_t> generate_all_moves(std::span<move_t, MAX_MOVES_PER_PLY> buffer) const noexcept {
-        return generate_moves(buffer, bitboards::ALL, 0ull);
+        return generate_moves(buffer, bitboards::ALL, 0ull, {QUEEN, ROOK, BISHOP, KNIGHT});
     }
 
     std::span<move_t> generate_active_moves(std::span<move_t, MAX_ACTIVE_MOVES_PER_PLY> buffer) const noexcept {
         bitboard promotion_targets = side == WHITE ? by(side, PAWN) << 8 & ~by() & "8"_r : by(side, PAWN) >> 8 & ~by() & "1"_r;
-        return generate_moves(buffer, by(~side), promotion_targets);
+        return generate_moves(buffer, by(~side), promotion_targets, {QUEEN, KNIGHT});
     }
 
-    int see(const move_t& move) const noexcept;
+    int16_t see(const move_t& move) const noexcept;
 
     position_t& operator=(std::string_view fen) noexcept {
         board.fill(NO_PIECE);
@@ -138,6 +139,10 @@ struct position_t {
         return states.back().hash;
     }
 
+    move_t last_move() const noexcept {
+        return states.back().last_move;
+    }
+
     bool is_check() const noexcept {
         return !states.back().checkers.empty();
     }
@@ -156,8 +161,29 @@ struct position_t {
         return material[WHITE] <= 10300 && by(WPAWN).empty() && material[BLACK] <= 10300 && by(BPAWN).empty();
     }
 
+    bool check(move_t move) const noexcept {
+        square king_square = by(~side, KING).front();
+        square from = move.from();
+        square to = move.to();
+        type_e type = at(from).type();
+        switch (type) {
+            case PAWN:
+            return bitboards::pawn(king_square, ~side) & bitboard{to};
+            case KNIGHT:
+            return bitboards::knight(king_square) & bitboard{to};
+            case BISHOP:
+            return bitboards::bishop_queen(king_square, by()) & bitboard{to};
+            case ROOK:
+            return bitboards::rook_queen(king_square, by()) & bitboard{to};
+            case QUEEN:
+            return (bitboards::bishop_queen(king_square, by()) | bitboards::rook_queen(king_square, by())) & bitboard{to};
+            default:
+            return false;
+        }
+    }
+
 private:
-    std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets) const noexcept;
+    std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types) const noexcept;
     void setup(std::string_view fen) noexcept;
 
     std::array<piece, SQUARE_MAX> board;
@@ -244,7 +270,7 @@ inline void position_t::setup(std::string_view fen) noexcept {
     new_state.checkers = attackers(king_square) & by(~side);
 
     new_state.captured = NO_PIECE;
-    new_state.null_move = false;
+    new_state.last_move = move_t{};
 
     states.reserve(MAX_MOVES_PER_GAME);
     states.push_back(new_state);
@@ -270,7 +296,7 @@ inline bitboard position_t::attackers(square square) const noexcept {
     return attackers;
 }
 
-inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets) const noexcept {
+inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types) const noexcept {
 
     size_t index = 0;
     bitboard checkers = states.back().checkers;
@@ -369,7 +395,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
     const auto generate_promotion = [&](bitboard targets, int delta) {
         for (square to : targets)
             if (valid_for_pinned[to + delta] & bitboard{to})
-                for (type_e type : {QUEEN, ROOK, BISHOP, KNIGHT})
+                for (type_e type : promotion_types)
                     buffer[index++] = {to + delta, to, type};
     };
 
@@ -568,7 +594,7 @@ inline void position_t::make_move(move_t move) noexcept {
     full_move += side == WHITE;
     new_state.captured = captured_piece;
     new_state.hash ^= hashes::side();
-    new_state.null_move = false;
+    new_state.last_move = move;
 
     side = ~side;
 
@@ -576,6 +602,13 @@ inline void position_t::make_move(move_t move) noexcept {
     new_state.checkers = attackers(king_square) & by(~side);
     // auto king_square = by(side, KING).front();
     // new_state.checkers = attackers(king_square, ~side) & by(~side);
+
+    // bitboard foo[TYPE_MAX];
+    // foo[PAWN] = bitboards::pawn(king_square, ~side);
+    // foo[KNIGHT] = bitboards::knight(king_square);
+    // foo[BISHOP] = bitboards::bishop_queen(king_square, by());
+    // foo[ROOK] = bitboards::rook_queen(king_square, by());
+    // foo[QUEEN] = foo[ROOK] | foo[BISHOP];
 
     states.push_back(new_state);
 }
@@ -669,7 +702,7 @@ inline void position_t::undo_move(move_t move) noexcept {
 
 inline bool position_t::can_null_move() const noexcept {
     bitboard non_pawn_pieces = by(side, KNIGHT, BISHOP) | by(side, ROOK, QUEEN);
-    return !is_check() && !states.back().null_move && non_pawn_pieces.size() > 1 && by(side).size() > 4 && by(~side).size() > 4;
+    return !is_check() && last_move() != move_t{} && non_pawn_pieces.size() > 1 && by(side).size() > 4 && by(~side).size() > 4;
 }
 
 
@@ -681,7 +714,7 @@ inline void position_t::make_null_move() noexcept {
     new_state.en_passant = 0ull;
     new_state.captured = NO_PIECE;
     new_state.half_move++;
-    new_state.null_move = true;
+    new_state.last_move = move_t{};
 
     side = ~side;
     full_move += side == WHITE;
@@ -699,7 +732,7 @@ inline void position_t::undo_null_move() noexcept {
     states.pop_back();
 }
 
-inline int position_t::see(const move_t& move) const noexcept {
+inline int16_t position_t::see(const move_t& move) const noexcept {
 
     auto find_least_piece = [this](bitboard board) -> square {
         for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING}) {

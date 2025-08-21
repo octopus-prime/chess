@@ -23,10 +23,10 @@ class transposition_t {
 	std::vector<entry_t> entries;
 
 public:
-	// transposition2_t() : entries(104'395'303) {
+	// transposition_t() : entries(104'395'303) {
 	// }
 
-	// transposition2_t() : entries(15'485'863) {
+	// transposition_t() : entries(15'485'863) {
 	// }
 
 	transposition_t() : entries(1'000'037) {

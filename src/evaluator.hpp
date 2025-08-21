@@ -49,30 +49,10 @@ public:
         }
     }
 
-private:
-    // Sigmoid function: maps (-∞, +∞) to (-1, +1)
-    static float sigmoid(float x, float scale = 1.0f) {
-        return std::tanh(x / scale);
-    }
-    
-    // Alternative: maps (-∞, +∞) to (0, 1)
-    static float sigmoid_01(float x, float scale = 1.0f) {
-        return 1.0f / (1.0f + std::exp(-x / scale));
-    }
-    
-    // Maps sigmoid output to centipawn range
-    static int sigmoid_to_cp(float sigmoid_value, int max_cp = 2000) {
-        return static_cast<int>(sigmoid_value * max_cp);
-    }
-
-public:
     std::int32_t evaluate(const position_t& position) const noexcept {
         const Entry& t = refresh(position, position.get_side());
         const Entry& o = refresh(position, ~position.get_side());
-        int raw_nnue = nnue.evaluate(t, o, position.by().size());// & ~15;
-        float sigmoid_value = sigmoid(raw_nnue, 8000.f);
-        return sigmoid_to_cp(sigmoid_value, 500);
-        // return raw_nnue;
+        return nnue.evaluate(t, o, position.by().size());
     }
 
 
