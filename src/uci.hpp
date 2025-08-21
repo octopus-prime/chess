@@ -65,7 +65,7 @@ private:
 
     void ucinewgame(std::string_view) {
         position_ = position_t::STARTPOS;
-        searcher.clear();
+        // searcher.clear();
     }
 
     void position(std::string_view args) {
@@ -132,34 +132,26 @@ private:
         }
 
         search = std::jthread{[&] {
-            constexpr auto depth = 100;
-            move_t best = searcher(depth);
+            auto end = Clock::now() + std::chrono::milliseconds(timetogo);
+            auto should_stop = [=] () {
+                return Clock::now() >= end;
+            };
+            searcher_t searcher{position_, transposition, history, evaluator, should_stop};
+            move_t best = searcher(100);
             std::println("bestmove {}", best);
             std::fflush(stdout);
+            searcher.clear();
         }};
-        
-        timer = std::jthread{[this, timetogo] {
-            using clock = std::chrono::high_resolution_clock;
-            auto end = clock::now() + std::chrono::milliseconds(timetogo);
-            while (clock::now() < end) {
-                if (searcher.should_stop()) {
-                    break;
-                }
-                std::this_thread::sleep_for(10ms);
-            }
-            searcher.request_stop();
-        }};
-        
-        if (timer.joinable())
-            timer.join();
 
-        searcher.clear();
+        if (search.joinable()) {
+            search.join();
+        }
     }
 
     void stop(std::string_view) {
-        searcher.request_stop();
-        if (search.joinable())
-            search.join();
+        // searcher.request_stop();
+        // if (search.joinable())
+        //     search.join();
     }
 
     void quit(std::string_view args) {
@@ -174,7 +166,5 @@ private:
     transposition_t transposition;
     history_t history{position_};
     evaluator evaluator;
-    searcher_t searcher{position_, transposition, history, evaluator};
     std::jthread search;
-    std::jthread timer;
 };

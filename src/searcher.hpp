@@ -30,25 +30,26 @@ struct searcher_t {
     transposition_t& transposition;
     history_t& history;
     evaluator& evaluator;
+    std::function<bool()> should_stop;
     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
     statistics_t stats;
-    std::atomic<bool> should_stop_flag{false};
+    // std::atomic<bool> should_stop_flag{false};
 
     void clear() noexcept {
         transposition.clear();
         history.clear();
         stats.nodes = 0;
         stats.max_height = 0;
-        should_stop_flag = false;
+        // should_stop_flag = false;
     }
 
-    void request_stop() noexcept {
-        should_stop_flag = true;
-    }
+    // void request_stop() noexcept {
+    //     should_stop_flag = true;
+    // }
 
-    bool should_stop() const noexcept {
-        return should_stop_flag.load();
-    }
+    // bool should_stop() const noexcept {
+    //     return should_stop_flag.load();
+    // }
 
     int operator()(int alpha, int beta, int height) noexcept {
         stats.nodes++;
@@ -295,15 +296,15 @@ struct searcher_t {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
         move_t best;
-        auto t0 = std::chrono::high_resolution_clock::now();
+        auto t0 = Clock::now();
         for (int iteration = 1; iteration <= depth; ++iteration) {
             result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
             if (should_stop()) {
                 break;
             }
             best = result.pv.front();
-            auto time1 = std::chrono::high_resolution_clock::now();
-            auto time = duration_cast<as_floating_point>(time1 - t0).count();
+            auto t1 = Clock::now();
+            auto time = duration_cast<as_floating_point>(t1 - t0).count();
             std::println("info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} time {} pv {}", iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
             std::fflush(stdout);
             if (result.score < -29000 || result.score > 29000) {

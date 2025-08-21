@@ -18,8 +18,10 @@
 #include <thread>
 #include <mutex>
 #include <random>
+#include <chrono>
 
 using namespace std::literals;
+using Clock = std::chrono::high_resolution_clock;
 
 template <typename T, typename U, std::size_t I>
     requires(sizeof(T) % sizeof(U) == 0)
