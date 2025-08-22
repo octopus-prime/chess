@@ -54,9 +54,9 @@ class basic_features {
     constexpr static inline std::size_t L0 = 22528;
     constexpr static inline std::size_t L1 = N;
 
-    alignas(64) std::int16_t weights0[L0][L1];
-    alignas(64) std::int16_t biases0[L1];
-    alignas(64) std::int32_t psqrt_weights0[L0][8];
+    alignas(32) std::int16_t weights0[L0][L1];
+    alignas(32) std::int16_t biases0[L1];
+    alignas(32) std::int32_t psqrt_weights0[L0][8];
 
 public:
     basic_features(std::istream& stream) {

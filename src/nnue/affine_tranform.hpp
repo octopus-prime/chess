@@ -4,7 +4,7 @@
 
 namespace nnue {
 
-alignas(64) constexpr std::array<std::array<std::uint16_t, 8>, 256> lookup_indices = []() {
+alignas(32) constexpr std::array<std::array<std::uint16_t, 8>, 256> lookup_indices = []() {
     std::array<std::array<std::uint16_t, 8>, 256> v{};
     for (unsigned i = 0; i < 256; ++i) {
         std::uint64_t j = i, k = 0;
@@ -81,7 +81,7 @@ void affine_tranform(const std::span<const std::uint8_t, I> input, const std::sp
     };
 
     if constexpr (sparse) {
-        alignas(64) std::uint16_t buf[NumChunks];
+        alignas(32) std::uint16_t buf[NumChunks];
         auto nnz = find_nnz(input32, std::span{buf});
         std::ranges::copy(biasvec, acc);
         std::ranges::for_each(nnz, f);
