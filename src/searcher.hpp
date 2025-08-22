@@ -69,7 +69,11 @@ struct searcher_t {
 
         // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
         // int stand_pat = position.get_material() + evaluator.evaluate(position) / 8;
-        int stand_pat = evaluator.evaluate(position);
+        // int stand_pat = evaluator.evaluate(position);
+        int stand_pat = evaluator.evaluate(position, alpha, beta);
+        // if (std::abs(stand_pat - alpha) < 50 || std::abs(stand_pat - beta) < 50) {
+        //     stand_pat = evaluator.evaluate(position);
+        // }
 
         // // Prevent Q-search explosion
         // if (q_depth > 6) {
