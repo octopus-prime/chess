@@ -142,7 +142,7 @@ struct searcher_t {
             return {position.is_check() ? -30000 + height : 0, {}};
         }
 
-        if (depth == 0 && (position.is_check() || moves.size() == 1)) {
+        if (/*depth == 0 &&*/ (position.is_check()/* || moves.size() == 1 */)) {
             depth++;
         }
 
@@ -196,12 +196,12 @@ struct searcher_t {
             }
         }
         
-        // if (best == move_t{} && depth > 4) {
-        //     auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
-        //     if (!pv.empty()) {
-        //         best = pv.front();
-        //     }
-        // }
+        if (best == move_t{} && depth > 4) {
+            auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+            if (!pv.empty()) {
+                best = pv.front();
+            }
+        }
 
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;

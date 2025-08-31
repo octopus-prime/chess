@@ -103,12 +103,11 @@ public:
             std::ranges::copy(regs, accumulation.subspan(index, chunk).begin());
         }
 
-        const auto psqrt_accumulation = span_cast<__m256i>(the_psqrt_accumulation);
-        const auto psqrt_weights = [this](const auto feature){ return span_cast<const __m256i>(std::span{psqrt_weights0[feature]}); };
-        for (auto feature : removed_features)
-            std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_sub_epi32);
-        for (auto feature : added_features)
-            std::ranges::transform(psqrt_accumulation, psqrt_weights(feature), psqrt_accumulation.begin(), _mm256_add_epi32);
+        const auto psqrt_weights = [this](const auto feature) { return _mm256_load_si256((const __m256i *) psqrt_weights0[feature]); };
+        __m256i psqrt_accumulation = _mm256_load_si256((const __m256i *) the_psqrt_accumulation.data());
+        psqrt_accumulation = std::ranges::fold_left(removed_features | std::views::transform(psqrt_weights), psqrt_accumulation, _mm256_sub_epi32);
+        psqrt_accumulation = std::ranges::fold_left(added_features | std::views::transform(psqrt_weights), psqrt_accumulation, _mm256_add_epi32);
+        _mm256_store_si256((__m256i *) the_psqrt_accumulation.data(), psqrt_accumulation);
     }
 
     void initialize(const std::span<std::int16_t, N> the_accumulation, const std::span<std::int32_t, 8> the_psqrt_accumulation) const noexcept {
@@ -116,8 +115,7 @@ public:
         const auto biases = span_cast<const __m256i>(std::span{biases0});
         std::ranges::copy(biases, accumulation.begin());
 
-        const auto psqrt_accumulation = span_cast<__m256i>(the_psqrt_accumulation);
-        std::ranges::fill(psqrt_accumulation, _mm256_setzero_si256());
+        _mm256_store_si256((__m256i *) the_psqrt_accumulation.data(), _mm256_setzero_si256());
     }
 };
 

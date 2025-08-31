@@ -128,13 +128,13 @@ private:
             std::from_chars(&*movestogo_part.begin(), &*movestogo_part.end(), movestogo);
             timetogo += timeleft / (movestogo + 1);
         } else {
-            timetogo += timeleft * 5 / 100;
+            timetogo += timeleft * 4 / 100;
         }
 
-        search = std::jthread{[&] {
+        search = std::jthread{[=, this](std::stop_token stop_token) {
             auto end = Clock::now() + std::chrono::milliseconds(timetogo);
             auto should_stop = [=] () {
-                return Clock::now() >= end;
+                return stop_token.stop_requested() || Clock::now() >= end;
             };
             searcher_t searcher{position_, transposition, history, evaluator, should_stop};
             move_t best = searcher(100);
@@ -143,15 +143,11 @@ private:
             searcher.clear();
         }};
 
-        if (search.joinable()) {
-            search.join();
-        }
+        search.detach();
     }
 
     void stop(std::string_view) {
-        // searcher.request_stop();
-        // if (search.joinable())
-        //     search.join();
+        search.request_stop();
     }
 
     void quit(std::string_view args) {

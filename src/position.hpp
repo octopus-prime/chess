@@ -119,9 +119,9 @@ struct position_t {
         return side;
     }
 
-    // uint16_t get_half_move() const noexcept {
-    //     return states.back().half_move;
-    // }
+    uint16_t get_half_move() const noexcept {
+        return states.back().half_move;
+    }
 
     // uint16_t get_full_move() const noexcept {
     //     return states.back().full_move;
