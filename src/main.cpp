@@ -24,7 +24,7 @@ void uci_demo() {
     // ss << "position startpos moves e2e4 e7e5 g1f3 b8c6 d2d4 e5d4 f3d4 g8f6 b1c3 f8b4 d4c6 b7c6 f1d3 e8g8 e1g1 f8e8 c1g5 a8b8 f2f4 b4e7 e4e5 f6d5 d1h5 g7g6 h5h6 d5c3 b2c3 e7g5 f4g5 e8e5 f1f7 g8f7 h6h7 f7e6 h7g6 e6d5 g6f7 d5d6 h2h4 c6c5 f7f4 d8h8 g5g6 d6c6 a1f1 a7a6 f4g3 e5e7 g3g5 h8g7 h4h5 e7e8 h5h6 g7c3 g6g7 c3d4 g1h2 d7d6 d3g6 e8g8 g6f7 c8d7 f7g8 b8g8 g5f4 g8g7 f4d4 c5d4 h6g7 d7e6 a2a3 c6d7 f1f6 e6d5 f6f5 d5e6 f5f6 e6d5 f6f5 d5e6\n";
     // ss << "go wtime 11597800 btime 117601 winc 0 binc 0 movestogo 1\n";
     // ss << "stop\n";
-    ss << "quit\n";
+    // ss << "quit\n";
     uci.run(ss);
 }
 

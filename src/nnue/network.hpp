@@ -12,14 +12,14 @@ class basic_network {
     constexpr static inline std::size_t L2 = 16;
     constexpr static inline std::size_t L3 = 32;
 
-    alignas(32) std::int8_t weights1[L1][L2];
-    alignas(32) std::int32_t biases1[L2];
+    alignas(64) std::int8_t weights1[L1][L2];
+    alignas(64) std::int32_t biases1[L2];
 
-    alignas(32) std::int8_t weights2[2 * L2][L3];
-    alignas(32) std::int32_t biases2[L3];
+    alignas(64) std::int8_t weights2[2 * L2][L3];
+    alignas(64) std::int32_t biases2[L3];
 
-    alignas(32) std::int8_t weights3[1][L3];
-    alignas(32) std::int32_t biases3[1];
+    alignas(64) std::int8_t weights3[1][L3];
+    alignas(64) std::int32_t biases3[1];
 
    public:
     basic_network(std::istream& stream) {
@@ -43,11 +43,11 @@ class basic_network {
     }
 
     std::int32_t evaluate(const std::span<const std::uint8_t, L1> l1clipped) const noexcept {
-        alignas(32) std::int32_t l2transformed[L2];
-        alignas(32) std::uint8_t l2clipped[2 * L2];
-        alignas(32) std::int32_t l3transformed[L3];
-        alignas(32) std::uint8_t l3clipped[L3];
-        alignas(32) std::int32_t l4transformed[1];
+        alignas(64) std::int32_t l2transformed[L2];
+        alignas(64) std::uint8_t l2clipped[2 * L2];
+        alignas(64) std::int32_t l3transformed[L3];
+        alignas(64) std::uint8_t l3clipped[L3];
+        alignas(64) std::int32_t l4transformed[1];
 
         affine_tranform<true>(std::span{l1clipped}, std::span{weights1}, std::span{biases1}, std::span{l2transformed});
         sqr_clipped_relu(std::span{l2transformed} | std::views::as_const, std::span{l2clipped}.template first<L2>());
