@@ -35,8 +35,8 @@ void uci_run() {
 
 int main() {
     try {
-        // uci_demo();
-        uci_run();
+        uci_demo();
+        // uci_run();
     } catch (const std::exception& e) {
         std::println("error: {}", e.what());
     }
