@@ -67,8 +67,9 @@ public:
     }
 
     std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {
+    //   return big.evaluate(position);
         int score = small.evaluate(position);
-        if (std::abs(score) < 100 || std::abs(score - alpha) < 50 || std::abs(score - beta) < 50) {
+        if (score - alpha > -150 && score - beta < 150) {
             score = big.evaluate(position);
         }
         return score;
