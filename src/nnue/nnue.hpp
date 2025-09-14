@@ -10,7 +10,7 @@ namespace nnue {
 
 template <std::size_t N>
 struct basic_entry {
-    alignas(32) std::int16_t accumulation[N]{};
+    alignas(64) std::int16_t accumulation[N]{};
     std::int32_t psqrt_accumulation[8]{};
     std::uint64_t pieces[7]{};
     std::uint64_t colors[2]{};
@@ -68,7 +68,7 @@ class basic_nnue {
 
     std::int32_t evaluate(const Entry& t, const Entry& o, const std::size_t piece_count) const noexcept {
         const auto bucket = (piece_count - 1) / 4;
-        alignas(32) std::uint8_t l1clipped[L1];
+        alignas(64) std::uint8_t l1clipped[L1];
 
 
         mul_clipped_relu(std::span{t.accumulation}, std::span{l1clipped}.template first<L1 / 2>());

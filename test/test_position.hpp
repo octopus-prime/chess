@@ -114,9 +114,16 @@ void test_position() {
         moves = position.generate_active_moves(buffer);
         ut::expect(std::ranges::is_permutation(moves, std::initializer_list{"b6d5"_m, "h7h8q"_m, "h7h8n"_m, "h7g8q"_m, "h7g8n"_m}));
 
+        position = "4k1n1/7P/1N6/3p3N/8/8/8/R2BK3 w - -"sv;
+        moves = position.generate_active_moves(buffer);
+        ut::expect(std::ranges::is_permutation(moves, std::initializer_list{"b6d5"_m, "h7h8q"_m, "h7h8n"_m, "h7g8q"_m, "h7g8n"_m, "a1a8"_m, "d1a4"_m, "h5g7"_m, "h5f6"_m}));
+
+        position = "4k1nQ/7P/1N1P4/3p3N/8/8/8/R2BK3 w - -"sv;
+        moves = position.generate_active_moves(buffer);
+        ut::expect(std::ranges::is_permutation(moves, std::initializer_list{"h5f6"_m, "h5g7"_m, "b6d5"_m, "a1a8"_m, "h8g8"_m, "d1a4"_m, "h8e5"_m, "d6d7"_m, "h7g8q"_m, "h7g8n"_m}));
+
         position = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv;
         moves = position.generate_active_moves(buffer);
-        ut::expect(ut::eq(moves.size(), 8));
         ut::expect(std::ranges::is_permutation(moves, std::initializer_list{"g2h3"_m, "f3h3"_m, "f3f6"_m, "e5g6"_m, "e5f7"_m, "e5d7"_m, "d5e6"_m, "e2a6"_m}));
 
         // position = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -"sv;

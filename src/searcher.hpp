@@ -55,13 +55,14 @@ struct searcher_t {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
-        if (position.is_check()) {
-            stats.nodes--;
-            std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-            return (*this)(alpha, beta, height, 0, pv_buffer).score;
-        }
+        // if (position.is_check()) {
+        //     stats.nodes--;
+        //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
+        //     return (*this)(alpha, beta, height, 0, pv_buffer).score;
+        // }
 
-        if (position.is_no_material()) {
+        // if (position.is_no_material()) {
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition()) {
             return 0;
         }
 
@@ -146,13 +147,14 @@ struct searcher_t {
             return {position.is_check() ? -30000 + height : 0, {}};
         }
 
-        if (depth == 0 && (position.is_check() || moves.size() == 1)) {
-            depth++;
-        }
+        // if (depth == 0 && (position.is_check()/* || moves.size() == 1 */)) {
+        //     depth++;
+        // }
 
         if (depth == 0) {
             stats.nodes--;
             int score = (*this)(alpha, beta, height);
+            transposition.put(position.hash(), move_t{}, score, flag_t::EXACT, depth);
             return {score, {}};
         }
 
@@ -200,12 +202,12 @@ struct searcher_t {
             }
         }
         
-        // if (best == move_t{} && depth > 4) {
-        //     auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
-        //     if (!pv.empty()) {
-        //         best = pv.front();
-        //     }
-        // }
+        if (best == move_t{} && depth > 4) {
+            auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+            if (!pv.empty()) {
+                best = pv.front();
+            }
+        }
 
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
@@ -247,12 +249,12 @@ struct searcher_t {
             position.make_move(move);
             result_t result;
             if (pv_found) {
-                bool reduced = ((phase == move_picker_t::QUIET_MOVES && phase_index > phase_moves.size() / 3) || phase == move_picker_t::BAD_CAPTURE_MOVES);
-                if (depth > 4 && !position_check && !move_check && reduced) {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
-                } else {
+                // bool reduced = ((phase == move_picker_t::QUIET_MOVES && phase_index > phase_moves.size() / 3) || phase == move_picker_t::BAD_CAPTURE_MOVES);
+                // if (depth > 4 && !position_check && !move_check && reduced) {
+                //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
+                // } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                }
+                // }
                 if (result.score >= alpha && result.score < beta) {
                     result = -(*this)(-beta, -result.score, height + 1, depth - 1, pv_buffer);
                 }
