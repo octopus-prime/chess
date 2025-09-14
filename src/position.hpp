@@ -66,16 +66,24 @@ struct position_t {
         bitboard promotion_targets = side == WHITE ? by(side, PAWN) << 8 & ~by() & "8"_r : by(side, PAWN) >> 8 & ~by() & "1"_r;
 
         square ksq = by(~side, KING).front();
+        bitboard b = bitboards::bishop_queen(ksq, by()) & ~by(side);
+        bitboard r = bitboards::rook_queen(ksq, by()) & ~by(side);
         std::array<bitboard, TYPE_MAX> check_targets = {
             0ull, // NO_TYPE
             bitboards::pawn(ksq, ~side) & ~by(side), // PAWN
             bitboards::knight(ksq) & ~by(side), // KNIGHT
-            bitboards::bishop_queen(ksq, by()) & ~by(side), // BISHOP
-            bitboards::rook_queen(ksq, by()) & ~by(side), // ROOK
-            (bitboards::rook_queen(ksq, by()) | bitboards::bishop_queen(ksq, by())) & ~by(side), // QUEEN
+            b,
+            r,
+            r | b,
             0ull, // KING
             0ull
         };
+
+        // std::println("b: {}", b);
+        // std::println("r: {}", r);
+        // std::println("B: {}", check_targets[BISHOP]);
+        // std::println("R: {}", check_targets[ROOK]);
+        // std::println("Q: {}", check_targets[QUEEN]);
 
         return generate_moves(buffer, by(~side), promotion_targets, {QUEEN, KNIGHT}, check_targets);
     }
@@ -173,7 +181,8 @@ struct position_t {
     bool is_3_fold_repetition() const noexcept {
         // 3-fold can only happen within last 50 moves (50-move rule)
         // auto range = std::span{states}.last(std::min(states.size(), 50ul));
-        return std::ranges::count(states, hash(), &state_t::hash) >= 3;
+        // return std::ranges::count(states, hash(), &state_t::hash) >= 3;
+        return std::ranges::count(states, hash(), &state_t::hash) >= 2;
     }
 
     bool is_no_material() const noexcept {
@@ -395,13 +404,13 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
     }
 
     for (square from_square : by(side, ROOK, QUEEN)) {
-        for (square to_square : bitboards::rook_queen(from_square, by()) & (valid_targets | check_targets[ROOK]) & valid_for_pinned[from_square]) {
+        for (square to_square : bitboards::rook_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]) {
             buffer[index++] = {from_square, to_square};
         }
     }
 
     for (square from_square : by(side, BISHOP, QUEEN)) {
-        for (square to_square : bitboards::bishop_queen(from_square, by()) & (valid_targets | check_targets[BISHOP]) & valid_for_pinned[from_square]) {
+        for (square to_square : bitboards::bishop_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]) {
             buffer[index++] = {from_square, to_square};
         }
     }   
