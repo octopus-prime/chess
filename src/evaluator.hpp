@@ -53,9 +53,7 @@ class evaluator {
         std::int32_t evaluate(const position_t& position) const noexcept {
             const Entry& t = refresh(position, position.get_side());
             const Entry& o = refresh(position, ~position.get_side());
-            auto score = nnue.evaluate(t, o, position.by().size());
-            score -= score * position.get_half_move() / 212;     // Damp down the evaluation linearly when shuffling
-            return score;
+            return nnue.evaluate(t, o, position.by().size());
         }
     };
 
@@ -67,11 +65,14 @@ public:
     }
 
     std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {
-    //   return big.evaluate(position);
+        constexpr int threshold = 150;
         int score = small.evaluate(position);
-        if (score - alpha > -150 && score - beta < 150) {
+        int lower = alpha - threshold;
+        int upper = beta + threshold;
+        if (lower < score && score < upper) {
             score = big.evaluate(position);
         }
+        score -= score * position.get_half_move() / 212;     // Damp down the evaluation linearly when shuffling
         return score;
     }
 };

@@ -181,8 +181,7 @@ struct position_t {
     bool is_3_fold_repetition() const noexcept {
         // 3-fold can only happen within last 50 moves (50-move rule)
         // auto range = std::span{states}.last(std::min(states.size(), 50ul));
-        // return std::ranges::count(states, hash(), &state_t::hash) >= 3;
-        return std::ranges::count(states, hash(), &state_t::hash) >= 2;
+        return std::ranges::count(states, hash(), &state_t::hash) >= 3;
     }
 
     bool is_no_material() const noexcept {
