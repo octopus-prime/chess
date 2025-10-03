@@ -31,7 +31,6 @@ struct searcher_t {
     history_t& history;
     evaluator& evaluator;
     std::function<bool()> should_stop;
-    std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
     statistics_t stats;
     // std::atomic<bool> should_stop_flag{false};
 
@@ -66,7 +65,7 @@ struct searcher_t {
             return 0;
         }
 
-        side_e side = position.get_side();
+        // side_e side = position.get_side();
 
         // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
         // int stand_pat = position.get_material() + evaluator.evaluate(position) / 8;
@@ -108,9 +107,17 @@ struct searcher_t {
             return std::get<1>(pair);
         });
 
+        bool pos_check = position.is_check();
+
         for (auto&& [move, gain] : zip) {
-            if (gain < 0 && !position.check(move)) {
-                continue;  // Skip moves that lose material
+            bool move_check = position.check(move);
+
+            // if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 200 < alpha)) {
+            //     continue;
+            // }
+
+            if (!pos_check && !move_check && gain < 0) {
+                continue;
             }
 
             position.make_move(move);
@@ -154,7 +161,6 @@ struct searcher_t {
         if (depth == 0) {
             stats.nodes--;
             int score = (*this)(alpha, beta, height);
-            transposition.put(position.hash(), move_t{}, score, flag_t::EXACT, depth);
             return {score, {}};
         }
 
@@ -189,13 +195,13 @@ struct searcher_t {
 
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        const int R = depth / 3;
+        const int R = 1 + depth / 3;
         if (depth > 4 && moves.size() > 8 && position.can_null_move()) {
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
             if (result.score >= beta) {
-                result = (*this)(alpha, beta, height, depth - 2 - R, pv_buffer);
+                result = (*this)(alpha, beta, height, depth - 1 - R, pv_buffer);
                 if (result.score >= beta) {
                     return {beta, {}};
                 }
@@ -203,7 +209,7 @@ struct searcher_t {
         }
         
         if (best == move_t{} && depth > 4) {
-            auto pv = (*this)(alpha, beta, height, depth - 2, pv_buffer).pv;
+            auto pv = (*this)(alpha, beta, height, depth - R, pv_buffer).pv;
             if (!pv.empty()) {
                 best = pv.front();
             }
@@ -302,6 +308,7 @@ struct searcher_t {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
         move_t best;
+        std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
         auto t0 = Clock::now();
         for (int iteration = 1; iteration <= depth; ++iteration) {
             result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);

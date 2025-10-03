@@ -41,7 +41,7 @@ public:
 
 	void put(hash_t hash, move_t move, int16_t score, flag_t flag, uint8_t depth) noexcept {
 		entry_t& entry = entries[hash % entries.size()];
-        if (entry.flag == UNKNOWN || entry.hash == hash || depth > entry.depth) {
+        if (entry.flag == UNKNOWN || entry.hash == hash || depth >= entry.depth) {
             entry = {hash, move, score, flag, depth};
         }
 	}
