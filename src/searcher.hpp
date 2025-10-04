@@ -112,13 +112,13 @@ struct searcher_t {
         for (auto&& [move, gain] : zip) {
             bool move_check = position.check(move);
 
-            // if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 200 < alpha)) {
-            //     continue;
-            // }
-
-            if (!pos_check && !move_check && gain < 0) {
+            if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 100 < alpha)) {
                 continue;
             }
+
+            // if (!pos_check && !move_check && gain < 0) {
+            //     continue;
+            // }
 
             position.make_move(move);
             int score = -(*this)(-beta, -alpha, height + 1);
@@ -191,7 +191,7 @@ struct searcher_t {
             }
         }
 
-        int old_alpha = alpha;
+        // int old_alpha = alpha;
 
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
@@ -218,21 +218,21 @@ struct searcher_t {
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
         bool pv_found = false;
-        move_picker_t::phase_e pv_phase = move_picker_t::TT_MOVES;
+        // move_picker_t::phase_e pv_phase = move_picker_t::TT_MOVES;
         bool position_check = position.is_check();
-        size_t index = 0;
+        // size_t index = 0;
         for (auto&& phase : move_picker_t::ALL) {
-            size_t phase_index = 0;
-            auto phase_moves = move_picker(phase);
-        for (auto&& [move, eval] : phase_moves) {
-            auto see_eval = eval.see;
+        //     size_t phase_index = 0;
+            // auto phase_moves = move_picker(phase);
+        for (auto&& [move, eval] : move_picker(phase)) {
+            // auto see_eval = eval.see;
             bool move_check = position.check(move);
 
-            if (height == 0 && depth > 6) {
-                // std::println("info currmove {} currmovenumber {} see {} hist {}", move, index + 1, eval.see, eval.history);
-                std::println("info currmove {} currmovenumber {}", move, index + 1);
-                std::fflush(stdout);
-            }
+            // if (height == 0 && depth > 6) {
+            //     // std::println("info currmove {} currmovenumber {} see {} hist {}", move, index + 1, eval.see, eval.history);
+            //     std::println("info currmove {} currmovenumber {}", move, index + 1);
+            //     std::fflush(stdout);
+            // }
 
             // if (depth <= 4 && pv_found && !position_check && !move_check && position.get_material() + see_eval + 200 * depth < alpha) {
             //     index++;
@@ -255,12 +255,13 @@ struct searcher_t {
             position.make_move(move);
             result_t result;
             if (pv_found) {
-                // bool reduced = ((phase == move_picker_t::QUIET_MOVES && phase_index > phase_moves.size() / 3) || phase == move_picker_t::BAD_CAPTURE_MOVES);
-                // if (depth > 4 && !position_check && !move_check && reduced) {
-                //     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
-                // } else {
+                // bool reduced = (phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES) && eval.history == 0;
+                bool reduced = eval.see <= 0 && eval.history == 0;
+                if (depth > 4 && !position_check && !move_check && reduced) {
+                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
+                } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                // }
+                }
                 if (result.score >= alpha && result.score < beta) {
                     result = -(*this)(-beta, -result.score, height + 1, depth - 1, pv_buffer);
                 }
@@ -268,8 +269,8 @@ struct searcher_t {
                 result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
             }
             position.undo_move(move);
-            index++;
-            phase_index++;
+            // index++;
+            // phase_index++;
 
             if (result.score >= beta) {
                 transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
@@ -283,7 +284,7 @@ struct searcher_t {
                 alpha = result.score;
                 best = move;
                 pv_found = true;
-                pv_phase = phase;
+                // pv_phase = phase;
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 length = result.pv.size() + 1;

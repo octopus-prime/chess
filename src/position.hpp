@@ -190,9 +190,8 @@ struct position_t {
 
     bool check(move_t move) const noexcept {
         square king_square = by(~side, KING).front();
-        square from = move.from();
         square to = move.to();
-        type_e type = at(from).type();
+        type_e type = move.promotion() == NO_TYPE ? at(move.from()).type() : move.promotion();
         switch (type) {
             case PAWN:
             return bitboards::pawn(king_square, ~side) & bitboard{to};
@@ -227,6 +226,7 @@ inline position_t::position_t() noexcept : position_t{STARTPOS} {
 }
 
 inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied_by_type{}, occupied_by_side{}, material{}, full_move{}, side{WHITE}, states{} {
+    states.reserve(MAX_MOVES_PER_GAME);
     setup(fen);
 }
 
@@ -300,7 +300,6 @@ inline void position_t::setup(std::string_view fen) noexcept {
     new_state.captured = NO_PIECE;
     new_state.last_move = move_t{};
 
-    states.reserve(MAX_MOVES_PER_GAME);
     states.push_back(new_state);
 }
 

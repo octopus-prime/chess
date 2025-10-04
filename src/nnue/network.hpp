@@ -49,7 +49,7 @@ class basic_network {
         alignas(64) std::uint8_t l3clipped[L3];
         alignas(64) std::int32_t l4transformed[1];
 
-        affine_tranform<true>(std::span{l1clipped}, std::span{weights1}, std::span{biases1}, std::span{l2transformed});
+        affine_tranform(std::span{l1clipped}, std::span{weights1}, std::span{biases1}, std::span{l2transformed});
         sqr_clipped_relu(std::span{l2transformed} | std::views::as_const, std::span{l2clipped}.template first<L2>());
         clipped_relu(std::span{l2transformed} | std::views::as_const, std::span{l2clipped}.template last<L2>());
         // ugly shit
@@ -57,7 +57,7 @@ class basic_network {
         l2clipped[2 * L2 - 2] = 0;
         l2clipped[2 * L2 - 1] = 0;
         //
-        affine_tranform<false>(std::span{l2clipped} | std::views::as_const, std::span{weights2}, std::span{biases2}, std::span{l3transformed});
+        affine_tranform(std::span{l2clipped} | std::views::as_const, std::span{weights2}, std::span{biases2}, std::span{l3transformed});
         clipped_relu(std::span{l3transformed} | std::views::as_const, std::span{l3clipped});
         affine_tranform(std::span{l3clipped} | std::views::as_const, std::span{weights3}, std::span{biases3}, std::span{l4transformed});
 
