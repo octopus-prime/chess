@@ -26,6 +26,8 @@ struct position_t {
         bitboard castle;
         bitboard en_passant;
         bitboard checkers;
+        // bitboard check_squares[SIDE_MAX][TYPE_MAX];
+        bitboard check_squares[TYPE_MAX];
         hash_t hash;
         uint8_t half_move;
         piece captured;    
@@ -65,19 +67,38 @@ struct position_t {
     std::span<move_t> generate_active_moves(std::span<move_t, MAX_ACTIVE_MOVES_PER_PLY> buffer) const noexcept {
         bitboard promotion_targets = side == WHITE ? by(side, PAWN) << 8 & ~by() & "8"_r : by(side, PAWN) >> 8 & ~by() & "1"_r;
 
-        square ksq = by(~side, KING).front();
-        bitboard b = bitboards::bishop_queen(ksq, by()) & ~by(side);
-        bitboard r = bitboards::rook_queen(ksq, by()) & ~by(side);
-        std::array<bitboard, TYPE_MAX> check_targets = {
-            0ull, // NO_TYPE
-            bitboards::pawn(ksq, ~side) & ~by(side), // PAWN
-            bitboards::knight(ksq) & ~by(side), // KNIGHT
-            b,
-            r,
-            r | b,
-            0ull, // KING
-            0ull
-        };
+        // square ksq = by(~side, KING).front();
+        // bitboard b = bitboards::bishop_queen(ksq, by()) & ~by(side);
+        // bitboard r = bitboards::rook_queen(ksq, by()) & ~by(side);
+        // std::array<bitboard, TYPE_MAX> check_targets = {
+        //     0ull, // NO_TYPE
+        //     bitboards::pawn(ksq, ~side) & ~by(side), // PAWN
+        //     bitboards::knight(ksq) & ~by(side), // KNIGHT
+        //     b,
+        //     r,
+        //     r | b,
+        //     0ull, // KING
+        //     0ull
+        // };
+
+        // square ksq = by(~side, KING).front();
+        // bitboard b = bitboards::bishop_queen(ksq, by()) & ~by(side);
+        // bitboard r = bitboards::rook_queen(ksq, by()) & ~by(side);
+        // std::span cs = states.back().check_squares[~side];
+        // std::array<bitboard, TYPE_MAX> check_targets = {
+        //     0ull, // NO_TYPE
+        //     cs[PAWN] & ~by(side), // PAWN
+        //     cs[KNIGHT] & ~by(side), // KNIGHT
+        //     cs[BISHOP] & ~by(side), // BISHOP
+        //     cs[ROOK] & ~by(side), // ROOK
+        //     cs[QUEEN] & ~by(side), // QUEEN
+        //     0ull, // KING
+        //     0ull
+        // };
+
+        std::array<bitboard, TYPE_MAX> check_targets;
+        // std::ranges::transform(states.back().check_squares[~side], check_targets.begin(), [this](bitboard bb) { return bb & ~by(side); });
+        std::ranges::transform(states.back().check_squares, check_targets.begin(), [this](bitboard bb) { return bb & ~by(side); });
 
         // std::println("b: {}", b);
         // std::println("r: {}", r);
@@ -189,30 +210,36 @@ struct position_t {
     }
 
     bool check(move_t move) const noexcept {
-        square king_square = by(~side, KING).front();
         square from = move.from();
         square to = move.to();
         type_e type = at(from).type();
-        switch (type) {
-            case PAWN:
-            return bitboards::pawn(king_square, ~side) & bitboard{to};
-            case KNIGHT:
-            return bitboards::knight(king_square) & bitboard{to};
-            case BISHOP:
-            return bitboards::bishop_queen(king_square, by()) & bitboard{to};
-            case ROOK:
-            return bitboards::rook_queen(king_square, by()) & bitboard{to};
-            case QUEEN:
-            return (bitboards::bishop_queen(king_square, by()) | bitboards::rook_queen(king_square, by())) & bitboard{to};
-            default:
-            return false;
+        if (move.promotion() != NO_TYPE) {
+            type = move.promotion();
         }
+        // return states.back().check_squares[~side][type] & bitboard{to};
+        return states.back().check_squares[type] & bitboard{to};
+        // square king_square = by(~side, KING).front();
+        // switch (type) {
+        //     case PAWN:
+        //     return bitboards::pawn(king_square, ~side) & bitboard{to};
+        //     case KNIGHT:
+        //     return bitboards::knight(king_square) & bitboard{to};
+        //     case BISHOP:
+        //     return bitboards::bishop_queen(king_square, by()) & bitboard{to};
+        //     case ROOK:
+        //     return bitboards::rook_queen(king_square, by()) & bitboard{to};
+        //     case QUEEN:
+        //     return (bitboards::bishop_queen(king_square, by()) | bitboards::rook_queen(king_square, by())) & bitboard{to};
+        //     default:
+        //     return false;
+        // }
     }
 
 private:
     std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types) const noexcept;
     std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types, std::span<const bitboard, TYPE_MAX> check_targets) const noexcept;
     void setup(std::string_view fen) noexcept;
+    void generate_check_squares(side_e side, std::span<bitboard, TYPE_MAX> check_targets) const noexcept;
 
     std::array<piece, SQUARE_MAX> board;
     std::array<bitboard, 7> occupied_by_type;
@@ -223,10 +250,23 @@ private:
     std::vector<state_t> states;
 };
 
+void position_t::generate_check_squares(side_e side, std::span<bitboard, TYPE_MAX> check_targets) const noexcept {
+    square king_square = by(side, KING).front();
+    check_targets[NO_TYPE] = 0ull;
+    check_targets[PAWN] = bitboards::pawn(king_square, side);
+    check_targets[KNIGHT] = bitboards::knight(king_square);
+    check_targets[BISHOP] = bitboards::bishop_queen(king_square, by());
+    check_targets[ROOK] = bitboards::rook_queen(king_square, by());
+    check_targets[QUEEN] = check_targets[BISHOP] | check_targets[ROOK];
+    check_targets[KING] = 0ull;
+    check_targets[7] = 0ull;
+}
+
 inline position_t::position_t() noexcept : position_t{STARTPOS} {
 }
 
 inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied_by_type{}, occupied_by_side{}, material{}, full_move{}, side{WHITE}, states{} {
+    states.reserve(MAX_MOVES_PER_GAME);
     setup(fen);
 }
 
@@ -294,13 +334,36 @@ inline void position_t::setup(std::string_view fen) noexcept {
         std::from_chars(&*full_move_part.begin(), &*full_move_part.end(), full_move);
     }
 
-    auto king_square = by(side, KING).front();
-    new_state.checkers = attackers(king_square) & by(~side);
+    // auto king_square = by(side, KING).front();
+    // new_state.checkers = attackers(king_square) & by(~side);
+
+    // ----
+
+    // generate_check_squares(WHITE, new_state.check_squares[WHITE]);
+    // generate_check_squares(BLACK, new_state.check_squares[BLACK]);
+
+    // new_state.checkers = 0;
+    // for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+    //     new_state.checkers |= new_state.check_squares[side][type] & by(~side, type);
+    // }
+
+    // ----
+
+    generate_check_squares(~side, new_state.check_squares);
+
+    bitboard check_squares[TYPE_MAX];
+    generate_check_squares(side, check_squares);
+
+    new_state.checkers = 0;
+    for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+        new_state.checkers |= check_squares[type] & by(~side, type);
+    }
+
+    // ----
 
     new_state.captured = NO_PIECE;
     new_state.last_move = move_t{};
 
-    states.reserve(MAX_MOVES_PER_GAME);
     states.push_back(new_state);
 }
 
@@ -786,10 +849,10 @@ inline void position_t::make_move(move_t move) noexcept {
 
     side = ~side;
 
-    auto king_square = by(side, KING).front();
-    new_state.checkers = attackers(king_square) & by(~side);
     // auto king_square = by(side, KING).front();
-    // new_state.checkers = attackers(king_square, ~side) & by(~side);
+    // new_state.checkers = attackers(king_square) & by(~side);
+    // // auto king_square = by(side, KING).front();
+    // // new_state.checkers = attackers(king_square, ~side) & by(~side);
 
     // bitboard foo[TYPE_MAX];
     // foo[PAWN] = bitboards::pawn(king_square, ~side);
@@ -797,6 +860,30 @@ inline void position_t::make_move(move_t move) noexcept {
     // foo[BISHOP] = bitboards::bishop_queen(king_square, by());
     // foo[ROOK] = bitboards::rook_queen(king_square, by());
     // foo[QUEEN] = foo[ROOK] | foo[BISHOP];
+
+    // ----
+
+    // generate_check_squares(WHITE, new_state.check_squares[WHITE]);
+    // generate_check_squares(BLACK, new_state.check_squares[BLACK]);
+
+    // new_state.checkers = 0;
+    // for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+    //     new_state.checkers |= new_state.check_squares[side][type] & by(~side, type);
+    // }
+
+    // ----
+
+    generate_check_squares(~side, new_state.check_squares);
+
+    bitboard check_squares[TYPE_MAX];
+    generate_check_squares(side, check_squares);
+
+    new_state.checkers = 0;
+    for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+        new_state.checkers |= check_squares[type] & by(~side, type);
+    }
+
+    // ----
 
     states.push_back(new_state);
 }
@@ -907,8 +994,32 @@ inline void position_t::make_null_move() noexcept {
     side = ~side;
     full_move += side == WHITE;
 
-    auto king_square = by(side, KING).front();
-    new_state.checkers = attackers(king_square) & by(~side);
+    // auto king_square = by(side, KING).front();
+    // new_state.checkers = attackers(king_square) & by(~side);
+
+    // ----
+
+    // generate_check_squares(WHITE, new_state.check_squares[WHITE]);
+    // generate_check_squares(BLACK, new_state.check_squares[BLACK]);
+
+    // new_state.checkers = 0;
+    // for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+    //     new_state.checkers |= new_state.check_squares[side][type] & by(~side, type);
+    // }
+
+    // ----
+
+    generate_check_squares(~side, new_state.check_squares);
+
+    bitboard check_squares[TYPE_MAX];
+    generate_check_squares(side, check_squares);
+
+    new_state.checkers = 0;
+    for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN}) {
+        new_state.checkers |= check_squares[type] & by(~side, type);
+    }
+
+    // ----
 
     states.push_back(new_state);
 }
