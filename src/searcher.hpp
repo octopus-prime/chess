@@ -226,7 +226,7 @@ struct searcher_t {
             // auto phase_moves = move_picker(phase);
         for (auto&& [move, eval] : move_picker(phase)) {
             // auto see_eval = eval.see;
-            bool move_check = position.check(move);
+            // bool move_check = position.check(move);
 
             // if (height == 0 && depth > 6) {
             //     // std::println("info currmove {} currmovenumber {} see {} hist {}", move, index + 1, eval.see, eval.history);
@@ -253,6 +253,7 @@ struct searcher_t {
 
 
             position.make_move(move);
+            bool move_check = position.is_check();
             result_t result;
             if (pv_found) {
                 // bool reduced = (phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES) && eval.history == 0;
