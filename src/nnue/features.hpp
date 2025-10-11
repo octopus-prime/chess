@@ -89,7 +89,7 @@ public:
     }
 
     void update(const std::span<std::int16_t, N> the_accumulation, const std::span<std::int32_t, 8> the_psqrt_accumulation, const std::span<const std::uint16_t> removed_features, const std::span<const std::uint16_t> added_features) const noexcept {
-        constexpr auto chunk = std::min(std::size_t{32}, N * sizeof(std::int16_t) / sizeof(__m512i)); // 16 num simd regs (N=3072) - or - 8 just all data (N=128)
+        constexpr auto chunk = std::min(std::size_t{16}, N * sizeof(std::int16_t) / sizeof(__m512i)); // 16 num simd regs (N=3072) - or - 4 just all data (N=128)
         static_assert(N % (chunk * sizeof(__m512i) / sizeof(std::int16_t)) == 0);
         const auto accumulation = span_cast<__m512i>(the_accumulation);
         const auto weights = [this](const auto feature){ return span_cast<const __m512i>(std::span{weights0[feature]}); };
