@@ -3,7 +3,7 @@
 #include <transposition.hpp>
 #include "ut.hpp"
 
-static_assert(sizeof(entry_t) == 10);
+static_assert(sizeof(entry_t) == 8);
 
 void test_transposition() {
     namespace ut = boost::ut;
@@ -23,7 +23,7 @@ void test_transposition() {
         const entry_t* entry = transposition.get(hash);
         ut::expect(entry != nullptr);
         ut::expect(ut::eq(entry->key, static_cast<uint16_t>(hash)));
-        ut::expect(entry->move == move);
+        ut::expect(entry->move == tt_move_t{move});
         ut::expect(ut::eq(entry->score, score));
         ut::expect(ut::eq(entry->flag, flag));
         ut::expect(ut::eq(entry->depth, depth));
