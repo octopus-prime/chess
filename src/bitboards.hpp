@@ -3,15 +3,30 @@
 #include "bitboard.hpp"
 #include "side.hpp"
 
+enum direction_e : int8_t {
+    NORTH,
+    NORTH_EAST,
+    EAST,
+    SOUTH_EAST,
+    SOUTH,
+    SOUTH_WEST,
+    WEST,
+    NORTH_WEST
+};
+
+constexpr size_t DIRECTION_MAX = 8;
+
 class bitboards
 {
   using dualboard = __v2du;
   using quadboard = __v4du;
-  using leaper_lookup_t = std::array<bitboard, 64>;
-  using line_lookup_t = std::array<leaper_lookup_t, 64>;
+  using leaper_lookup_t = std::array<bitboard, SQUARE_MAX>;
+  using line_lookup_t = std::array<leaper_lookup_t, SQUARE_MAX>;
+  using ray_lookup_t = std::array<std::array<bitboard, DIRECTION_MAX>, SQUARE_MAX>;
   struct slider_lookup_t;
 
   static const line_lookup_t lookup_line;
+  static const ray_lookup_t lookup_ray;
   static const leaper_lookup_t lookup_king;
   static const leaper_lookup_t lookup_knight;
   // static const leaper_lookup_t lookup_pawn_white;
@@ -27,6 +42,7 @@ public:
   static constexpr bitboard ALL = ~0ull;
 
   static bitboard line(square from, square to) noexcept;
+  static bitboard ray(square from, direction_e dir) noexcept;
 
   static bitboard king(square square) noexcept;
   static bitboard king(bitboard squares) noexcept;
@@ -72,6 +88,11 @@ struct bitboards::slider_lookup_t
 inline bitboard bitboards::line(square from, square to) noexcept
 {
   return lookup_line[from][to];
+}
+
+inline bitboard bitboards::ray(square from, direction_e direction) noexcept
+{
+  return lookup_ray[from][direction];
 }
 
 inline bitboard bitboards::king(square square) noexcept
@@ -301,5 +322,51 @@ const bitboards::line_lookup_t bitboards::lookup_line = []() noexcept {
       }
     }
   }
+  return lookup;
+}();
+
+const bitboards::ray_lookup_t bitboards::lookup_ray = []() noexcept {
+  ray_lookup_t lookup{};
+
+  for (square from : ALL) {
+    bitboard from_bb = bitboard{from};
+    quadboard b = {from_bb, from_bb, from_bb, from_bb};
+    quadboard o = {0, 0, 0, 0};
+    quadboard t = expand(b, ~o);
+    //  { 1, 8, 7, 9 };
+    bitboard bb1 = t[0];
+    bitboard bb8 = t[1];
+    bitboard bb7 = t[2];
+    bitboard bb9 = t[3];
+
+    for (square to : bb1) {
+      if (to > from)
+        lookup[from][EAST].set(to);
+      else
+        lookup[from][WEST].set(to);
+    }
+
+    for (square to : bb8) {
+      if (to > from)
+        lookup[from][NORTH].set(to);
+      else
+        lookup[from][SOUTH].set(to);
+    }
+
+    for (square to : bb7) {
+      if (to > from)
+        lookup[from][NORTH_WEST].set(to);
+      else
+        lookup[from][SOUTH_EAST].set(to);
+    }
+
+    for (square to : bb9) {
+      if (to > from)
+        lookup[from][NORTH_EAST].set(to);
+      else
+        lookup[from][SOUTH_WEST].set(to);
+    }
+  }
+
   return lookup;
 }();
