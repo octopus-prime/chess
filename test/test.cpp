@@ -10,6 +10,7 @@
 #include "test_transposition.hpp"
 #include "test_move_picker.hpp"
 #include "test_evaluator.hpp"
+#include "test_searcher.hpp"
 
 #include "nnue/test_affine_tranform.hpp"
 #include "nnue/test_clipped_relu.hpp"
@@ -30,6 +31,7 @@ int main() {
     test_transposition();
     test_move_picker();
     test_evaluator();
+    test_searcher();
 
     nnue::test_clipped_relu();
     nnue::test_sqr_clipped_relu();
