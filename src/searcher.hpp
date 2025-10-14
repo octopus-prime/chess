@@ -107,14 +107,18 @@ struct searcher_t {
             return std::get<1>(pair);
         });
 
-        bool pos_check = position.is_check();
+        // bool pos_check = position.is_check();
 
         for (auto&& [move, gain] : zip) {
-            bool move_check = position.check(move);
+            // bool move_check = position.check(move);
 
-            if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 100 < alpha)) {
+            if (gain < 0 || stand_pat + gain + 100 < alpha) {
                 continue;
             }
+
+            // if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 100 < alpha)) {
+            //     continue;
+            // }
 
             // if (!pos_check && !move_check && gain < 0) {
             //     continue;
