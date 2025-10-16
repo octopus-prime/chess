@@ -52,7 +52,7 @@ struct move_picker_t {
         //     eval = 100000 * position.see(move) + histories.get(move);
         // }
 
-        constexpr uint16_t CHECK = 10000;
+        constexpr uint16_t CHECK = 16000;
 
         switch (phase) {
             case TT_MOVES: {
