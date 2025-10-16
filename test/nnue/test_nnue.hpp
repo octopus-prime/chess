@@ -41,11 +41,11 @@ void test_nnue() {
             }
         };
 
-        nnue.update(entry[WHITE], std::span{active_features[WHITE]}.first(4), {});
-        nnue.update(entry[BLACK], std::span{active_features[BLACK]}.first(4), {});
+        nnue.update(entry[WHITE], {}, std::span{active_features[WHITE]}.first(4));
+        nnue.update(entry[BLACK], {}, std::span{active_features[BLACK]}.first(4));
 
-        ut::expect(ut::eq(nnue.evaluate(entry[WHITE], entry[BLACK], 4), -311));
-        ut::expect(ut::eq(nnue.evaluate(entry[BLACK], entry[WHITE], 4), -1238));
+        ut::expect(ut::eq(nnue.evaluate(entry[WHITE], entry[BLACK], 4), -420));
+        ut::expect(ut::eq(nnue.evaluate(entry[BLACK], entry[WHITE], 4), 562));
 
         // evaluation with update
 
@@ -66,8 +66,8 @@ void test_nnue() {
         nnue.update(entry[WHITE], std::span{removed_features[WHITE]}.first(2), std::span{added_features[WHITE]}.first(1));
         nnue.update(entry[BLACK], std::span{removed_features[BLACK]}.first(2), std::span{added_features[BLACK]}.first(1));
 
-        ut::expect(ut::eq(nnue.evaluate(entry[WHITE], entry[BLACK], 3), -149));
-        ut::expect(ut::eq(nnue.evaluate(entry[BLACK], entry[WHITE], 3), -1395));
+        ut::expect(ut::eq(nnue.evaluate(entry[WHITE], entry[BLACK], 3), 8));
+        ut::expect(ut::eq(nnue.evaluate(entry[BLACK], entry[WHITE], 3), 23));
     };
 }
 
