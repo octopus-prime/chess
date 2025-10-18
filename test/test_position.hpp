@@ -66,7 +66,31 @@ void test_position() {
 
     "no_material"_test = [] {
         ut::expect(ut::eq(position_t{}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4k3/8/8/8/8/8/8/4K3 w - -"}.is_no_material(), true));
+
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4K3 w - -"}.is_no_material(), true));
         ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KN2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KB2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KR2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kb2/8/8/8/8/8/8/4KNB w - -"}.is_no_material(), true));
+
+        ut::expect(ut::eq(position_t{"4kn2/8/8/8/8/8/8/4K3 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kn2/8/8/8/8/8/8/4KN2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kn2/8/8/8/8/8/8/4KB2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kn2/8/8/8/8/8/8/4KR2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kn2/8/8/8/8/8/8/4KNB w - -"}.is_no_material(), true));
+
+        ut::expect(ut::eq(position_t{"4kr2/8/8/8/8/8/8/4KN2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kr2/8/8/8/8/8/8/4KB2 w - -"}.is_no_material(), true));
+        ut::expect(ut::eq(position_t{"4kr2/8/8/8/8/8/8/4KR2 w - -"}.is_no_material(), true));
+
+        ut::expect(ut::eq(position_t{"4kq2/8/8/8/8/8/8/4KN2 w - -"}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4kq2/8/8/8/8/8/8/4KB2 w - -"}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4kq2/8/8/8/8/8/8/4KR2 w - -"}.is_no_material(), false));
+
+        ut::expect(ut::eq(position_t{"4k3/p7/8/8/8/8/8/4KN2 w - -"}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4k3/p7/8/8/8/8/8/4KB2 w - -"}.is_no_material(), false));
+        ut::expect(ut::eq(position_t{"4k3/p7/8/8/8/8/8/4KR2 w - -"}.is_no_material(), false));
     };
 
     "see"_test = []() {
