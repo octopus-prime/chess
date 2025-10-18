@@ -187,36 +187,7 @@ struct position_t {
     }
 
     bool is_no_material() const noexcept {
-        if (by(PAWN) || by(QUEEN))
-            return false;
-        if (by().size() == 2) // K vs K
-            return true;
-
-        constexpr auto to_key = [&](size_t white_minor, size_t white_major, size_t black_minor, size_t black_major) -> size_t {
-            return (white_minor << 6) | (white_major << 4) | (black_minor << 2) | black_major;
-        };
-
-        size_t white_minor = std::min(by(WHITE, KNIGHT, BISHOP).size(), 3ul);
-        size_t white_major = std::min(by(WHITE, ROOK).size(), 3ul);
-        size_t black_minor = std::min(by(BLACK, KNIGHT, BISHOP).size(), 3ul);
-        size_t black_major = std::min(by(BLACK, ROOK).size(), 3ul);
-        size_t key = to_key(white_minor, white_major, black_minor, black_major);
-
-        constexpr static std::array<bool, 256> lookup = [to_key]() {
-            std::array<bool, 256> table{};
-            table[to_key(0,0,0,0)] = true; // K vs K
-            table[to_key(1,0,0,0)] = true; // K+{N,B} vs K
-            table[to_key(0,0,1,0)] = true; // K vs K+{N,B}
-            table[to_key(1,0,1,0)] = true; // K+{N,B} vs K+{N,B}
-            table[to_key(2,0,1,0)] = true; // K+{N,B}x2 vs K+{N,B}
-            table[to_key(1,0,2,0)] = true; // K+{N,B} vs K+{N,B}x2
-            table[to_key(0,1,1,0)] = true; // K+R vs K+{N,B}
-            table[to_key(1,0,0,1)] = true; // K+{N,B} vs K+R
-            table[to_key(0,1,0,1)] = true; // K+R vs K+R
-            return table;
-        }();
-
-        return lookup[key];
+        return by(PAWN).empty() && material[WHITE] <= 10300 && material[BLACK] <= 10300;
     }
 
     bool check(move_t move) const noexcept {
