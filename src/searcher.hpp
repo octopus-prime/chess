@@ -5,7 +5,6 @@
 #include "history.hpp"
 #include "evaluator.hpp"
 #include "move_picker.hpp"
-#include <print>
 #include <chrono>
 
 struct searcher_t {
@@ -279,7 +278,7 @@ struct searcher_t {
 
             if (result.score >= beta) {
                 transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                history.put(move, height, 4 * depth);
+                history.put(move, height, 6 * depth);
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 return {beta, pv.first(result.pv.size() + 1)};
@@ -293,9 +292,9 @@ struct searcher_t {
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 length = result.pv.size() + 1;
-                // history.put(best, height, depth * depth / 4);
+                history.put(best, height, depth);
             } else {
-                // history.put(move, height, -depth * depth / 4);
+                // history.put(move, height, -depth);
             }
         }
     }
@@ -324,8 +323,12 @@ struct searcher_t {
             best = result.pv.front();
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
-            std::println("info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} time {} pv {}", iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+
+            char buffer[1024];
+            char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} time {} pv {}\n", iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             std::fflush(stdout);
+
             if (result.score < -29000 || result.score > 29000) {
                 break;
             }

@@ -138,8 +138,12 @@ private:
             };
             searcher_t searcher{position_, transposition, history, evaluator, should_stop};
             move_t best = searcher(100);
-            std::println("bestmove {}", best);
+
+            char buffer[20];
+            char* out = std::format_to(buffer, "bestmove {}\n", best);
+            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             std::fflush(stdout);
+
             searcher.clear();
         }};
 
