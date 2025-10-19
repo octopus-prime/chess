@@ -36,29 +36,21 @@ struct history_t {
         constexpr uint16_t DECAY = 10;
 
         auto age_butterfly = [](butterfly_entry_t& entry) {
-            for (auto &from : entry) {
-                for (auto &to : from) {
+            for (auto &from : entry)
+                for (auto &to : from)
                     to /= DECAY;
-                }
-            }
         };
         auto age_piece_to = [](piece_to_entry_t& entry) {
-            for (auto &type : entry) {
-                for (auto &to : type) {
+            for (auto &type : entry) 
+                for (auto &to : type)
                     to /= DECAY;
-                }
-            }
         };
         auto age_continuation = [](continuation_entry_t& entry) {
-            for (auto &from_type : entry) {
-                for (auto &from_square : from_type) {
-                    for (auto &to_type : from_square) {
-                        for (auto &to_square : to_type) {
+            for (auto &from_type : entry)
+                for (auto &from_square : from_type)
+                    for (auto &to_type : from_square)
+                        for (auto &to_square : to_type)
                             to_square /= DECAY;
-                        }
-                    }
-                }
-            }
         };
 
         std::ranges::for_each(butterfly_per_side_history, age_butterfly);
@@ -117,11 +109,6 @@ struct history_t {
         return score / 16;
     }
 
-    static void update(uint16_t& entry, uint16_t bonus, uint16_t factor) noexcept {
-        uint16_t clampedBonus = std::min<uint16_t>(bonus, factor);
-        entry += clampedBonus - entry * clampedBonus / factor;
-    }
-
 private:
     constexpr static inline size_t LOW_PLY = 4;
 
@@ -138,4 +125,9 @@ private:
     std::vector<piece_to_entry_t> piece_to_low_ply_history;
     std::vector<continuation_entry_t> continuation_per_side_history;
     std::vector<continuation_entry_t> continuation_low_ply_history;
+
+    static void update(uint16_t& entry, uint16_t bonus, uint16_t factor) noexcept {
+        uint16_t clampedBonus = std::min<uint16_t>(bonus, factor);
+        entry += clampedBonus - entry * clampedBonus / factor;
+    }
 };
