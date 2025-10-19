@@ -19,126 +19,56 @@ struct history_t {
         piece_to_low_ply_history(LOW_PLY), 
         continuation_per_side_history(SIDE_MAX), 
         continuation_low_ply_history(LOW_PLY) {
-        clear();
     }
 
     void clear() noexcept {
-        for (auto &from : butterfly_per_side_history) {
-            for (auto &to : from) {
-                std::ranges::fill(to, 0);
-            }
-        }
-        for (auto &from : butterfly_low_ply_history) {
-            for (auto &to : from) {
-                std::ranges::fill(to, 0);
-            }
-        }
-        for (auto &from : pawn_per_side_history) {
-            for (auto &to : from) {
-                std::ranges::fill(to, 0);
-            }
-        }
-        for (auto &from : pawn_low_ply_history) {
-            for (auto &to : from) {
-                std::ranges::fill(to, 0);
-            }
-        }
-        for (auto &piece : piece_to_per_side_history) {
-            for (auto &side : piece) {
-                std::ranges::fill(side, 0);
-            }
-        }
-        for (auto &piece : piece_to_low_ply_history) {
-            for (auto &side : piece) {
-                std::ranges::fill(side, 0);
-            }
-        }
-        for (auto &piece : continuation_per_side_history) {
-            for (auto &from : piece) {
-                for (auto &to : from) {
-                    for (auto &to2 : to) {
-                        std::ranges::fill(to2, 0);
-                    }
-                }
-            }
-        }
-        for (auto &piece : continuation_low_ply_history) {
-            for (auto &from : piece) {
-                for (auto &to : from) {
-                    for (auto &to2 : to) {
-                        std::ranges::fill(to2, 0);
-                    }
-                }
-            }
-        }
+        std::ranges::fill(butterfly_per_side_history, butterfly_entry_t{});
+        std::ranges::fill(butterfly_low_ply_history, butterfly_entry_t{});
+        std::ranges::fill(pawn_per_side_history, butterfly_entry_t{});
+        std::ranges::fill(pawn_low_ply_history, butterfly_entry_t{});
+        std::ranges::fill(piece_to_per_side_history, piece_to_entry_t{});
+        std::ranges::fill(piece_to_low_ply_history, piece_to_entry_t{});
+        std::ranges::fill(continuation_per_side_history, continuation_entry_t{});
+        std::ranges::fill(continuation_low_ply_history, continuation_entry_t{});
     }
 
-    void age() {
-        constexpr int DECAY = 10;
-        for (auto &from : butterfly_per_side_history) {
-            for (auto &to : from) {
-                for (auto &entry : to) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &from : butterfly_low_ply_history) {
-            for (auto &to : from) {
-                for (auto &entry : to) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &from : pawn_per_side_history) {
-            for (auto &to : from) {
-                for (auto &entry : to) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &from : pawn_low_ply_history) {
-            for (auto &to : from) {
-                for (auto &entry : to) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &piece : piece_to_per_side_history) {
-            for (auto &side : piece) {
-                for (auto &entry : side) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &piece : piece_to_low_ply_history) {
-            for (auto &side : piece) {
-                for (auto &entry : side) {
-                    entry /= DECAY;
-                }
-            }
-        }
-        for (auto &piece : continuation_per_side_history) {
-            for (auto &from : piece) {
+    void age() noexcept {
+        constexpr uint16_t DECAY = 10;
+
+        auto age_butterfly = [](butterfly_entry_t& entry) {
+            for (auto &from : entry) {
                 for (auto &to : from) {
-                    for (auto &to2 : to) {
-                        for (auto &entry : to2) {
-                            entry /= DECAY;
+                    to /= DECAY;
+                }
+            }
+        };
+        auto age_piece_to = [](piece_to_entry_t& entry) {
+            for (auto &type : entry) {
+                for (auto &to : type) {
+                    to /= DECAY;
+                }
+            }
+        };
+        auto age_continuation = [](continuation_entry_t& entry) {
+            for (auto &from_type : entry) {
+                for (auto &from_square : from_type) {
+                    for (auto &to_type : from_square) {
+                        for (auto &to_square : to_type) {
+                            to_square /= DECAY;
                         }
                     }
                 }
             }
-        }
-        for (auto &piece : continuation_low_ply_history) {
-            for (auto &from : piece) {
-                for (auto &to : from) {
-                    for (auto &to2 : to) {
-                        for (auto &entry : to2) {
-                            entry /= DECAY;
-                        }
-                    }
-                }
-            }
-        }
+        };
+
+        std::ranges::for_each(butterfly_per_side_history, age_butterfly);
+        std::ranges::for_each(butterfly_low_ply_history, age_butterfly);
+        std::ranges::for_each(pawn_per_side_history, age_butterfly);
+        std::ranges::for_each(pawn_low_ply_history, age_butterfly);
+        std::ranges::for_each(piece_to_per_side_history, age_piece_to);
+        std::ranges::for_each(piece_to_low_ply_history, age_piece_to);
+        std::ranges::for_each(continuation_per_side_history, age_continuation);
+        std::ranges::for_each(continuation_low_ply_history, age_continuation);
     }
 
     void put(move_t move, int height, int16_t value) noexcept {
@@ -188,9 +118,8 @@ struct history_t {
     }
 
     static void update(uint16_t& entry, uint16_t bonus, uint16_t factor) noexcept {
-        uint16_t clampedBonus = std::clamp<uint16_t>(bonus, 0, +factor);
+        uint16_t clampedBonus = std::min<uint16_t>(bonus, factor);
         entry += clampedBonus - entry * clampedBonus / factor;
-        // entry += clampedBonus - entry * std::abs(clampedBonus) / factor;
     }
 
 private:
