@@ -22,21 +22,24 @@ struct position_t {
     // constexpr static size_t MAX_MOVES_PER_GAME = 1024;
 
     // use once per ply
-    struct state_t {
+    struct alignas (64) state_t {
         bitboard castle;
-        bitboard en_passant;
+        // bitboard en_passant;
         bitboard checkers; // attackers unblocked for current side
         bitboard snipers[SIDE_MAX];  // attackers blocked by exactly one piece
         bitboard blockers[SIDE_MAX]; // blockers of snipers
         hash_t hash;
+        square en_passant;
         uint8_t half_move;
         uint8_t repetition;
         piece captured;    
         // bool null_move;
         move_t last_move;
 
-        bool operator==(const state_t& other) const noexcept = default;
+        // bool operator==(const state_t& other) const noexcept = default;
     };
+
+    static_assert(sizeof(state_t) == 64);
 
     constexpr static std::string_view STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv;
 
@@ -315,8 +318,10 @@ inline void position_t::setup(std::string_view fen) noexcept {
 
     std::string_view en_passant_part {*fen_part++};
     if (en_passant_part[0] != '-') {
-        new_state.en_passant = bitboard{en_passant_part};
+        new_state.en_passant = en_passant_part;
         new_state.hash ^= hashes::en_passant(new_state.en_passant);
+    } else {
+        new_state.en_passant = NO_SQUARE;
     }
 
     if (fen_part != fen_parts.end()) {
@@ -370,7 +375,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
 
     size_t index = 0;
     bitboard checkers = states.back().checkers;
-    bitboard en_passant = states.back().en_passant;
+    bitboard en_passant = states.back().en_passant == NO_SQUARE ? bitboard{} : bitboard{states.back().en_passant};
     bitboard attacked = attackers(~side);
     bitboard valid_en_passant = 0ull;
     square ksq = by(side, KING).front();
@@ -521,7 +526,7 @@ inline void position_t::make_move(move_t move) noexcept {
     piece moving_piece = board[from_square];
 
 
-    if (moving_piece.type() == PAWN && new_state.en_passant == bitboard{to_square}) {
+    if (moving_piece.type() == PAWN && new_state.en_passant == to_square) {
         square victim_square = side == WHITE ? to_square - 8 : to_square + 8;
         std::swap(board[to_square], board[victim_square]);
         occupied_by_type[PAWN].reset(victim_square);
@@ -547,7 +552,7 @@ inline void position_t::make_move(move_t move) noexcept {
 
     new_state.half_move++;
     new_state.hash ^= hashes::en_passant(new_state.en_passant);
-    new_state.en_passant = 0ll;
+    new_state.en_passant = NO_SQUARE;
 
     // ✅ Handle capture (including promotion captures)
     if (captured_piece != NO_PIECE) {
@@ -633,14 +638,14 @@ inline void position_t::make_move(move_t move) noexcept {
             break;
         case WPAWN:
             if (to_square - from_square == +16) {
-                new_state.en_passant = bitboard{from_square + 8};
+                new_state.en_passant = from_square + 8;
                 new_state.hash ^= hashes::en_passant(new_state.en_passant);
             }
             new_state.half_move = 0;
             break;
         case BPAWN:
             if (to_square - from_square == -16) {
-                new_state.en_passant = bitboard{from_square - 8};
+                new_state.en_passant = from_square - 8;
                 new_state.hash ^= hashes::en_passant(new_state.en_passant);
             }
             new_state.half_move = 0;
@@ -747,7 +752,7 @@ inline void position_t::undo_move(move_t move) noexcept {
     full_move -= side == WHITE;
     states.pop_back();
 
-    if (moving_piece.type() == PAWN && states.back().en_passant == bitboard{to_square}) {
+    if (moving_piece.type() == PAWN && states.back().en_passant == to_square) {
         square victim_square = side == WHITE ? to_square - 8 : to_square + 8;
         std::swap(board[to_square], board[victim_square]);
         occupied_by_type[PAWN].set(victim_square);
@@ -768,7 +773,7 @@ inline void position_t::make_null_move() noexcept {
 
     new_state.hash ^= hashes::side();
     new_state.hash ^= hashes::en_passant(new_state.en_passant);
-    new_state.en_passant = 0ull;
+    new_state.en_passant = NO_SQUARE;
     new_state.captured = NO_PIECE;
     new_state.half_move++;
     new_state.last_move = move_t{};

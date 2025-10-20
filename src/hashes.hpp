@@ -38,16 +38,26 @@ struct hashes {
         // return lookup[c];
     }
 
-    static hash_t en_passant(bitboard x) noexcept {
-        return x;
-        // static const std::array<hash_t, 64> lookup = [] {
-        //     std::array<hash_t, 64> lookup;
-        //     std::ranges::generate(lookup, generate);
-        //     return lookup;
-        // }();
-        // if (x.empty())
-        //     return 0;
-        // return lookup[x.front()];
+    // static hash_t en_passant(bitboard x) noexcept {
+    //     return x;
+    //     // static const std::array<hash_t, 64> lookup = [] {
+    //     //     std::array<hash_t, 64> lookup;
+    //     //     std::ranges::generate(lookup, generate);
+    //     //     return lookup;
+    //     // }();
+    //     // if (x.empty())
+    //     //     return 0;
+    //     // return lookup[x.front()];
+    // }
+
+    static hash_t en_passant(square x) noexcept {
+        static const std::array<hash_t, 65> lookup = [] {
+            std::array<hash_t, 65> lookup;
+            std::ranges::generate(lookup, generate);
+            lookup[NO_SQUARE] = 0;
+            return lookup;
+        }();
+        return lookup[x];
     }
 
     static hash_t side() noexcept {
