@@ -30,6 +30,7 @@ struct position_t {
         bitboard blockers[SIDE_MAX]; // blockers of snipers
         hash_t hash;
         uint8_t half_move;
+        uint8_t repetition;
         piece captured;    
         // bool null_move;
         move_t last_move;
@@ -181,9 +182,7 @@ struct position_t {
     }
 
     bool is_3_fold_repetition() const noexcept {
-        // 3-fold can only happen within last 50 moves (50-move rule)
-        // auto range = std::span{states}.last(std::min(states.size(), 50ul));
-        return std::ranges::count(states, hash(), &state_t::hash) >= 3;
+        return states.back().repetition >= 3;
     }
 
     bool is_no_material() const noexcept {
@@ -211,7 +210,6 @@ struct position_t {
     }
 
 private:
-    std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types) const noexcept;
     std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types, std::span<const bitboard, TYPE_MAX> check_targets) const noexcept;
     void setup(std::string_view fen) noexcept;
     std::tuple<bitboard, bitboard> find_snipers_and_blockers(side_e side) const noexcept;
@@ -232,22 +230,6 @@ inline position_t::position_t(std::string_view fen) noexcept : board{}, occupied
     states.reserve(MAX_MOVES_PER_GAME);
     setup(fen);
 }
-
-    // auto foo = [&](direction_e direction, bitboard candidates, std::function<square(bitboard)> find_nearest) {
-    //     bitboard ray = bitboards::ray(ksq, direction);
-    //     bitboard attacker_candidates = ray & candidates;
-    //     if (!attacker_candidates.empty()) {
-    //         square attacker = find_nearest(attacker_candidates);
-    //         bitboard line = bitboards::line(ksq, attacker);
-    //         bitboard between = line & by() & ~bitboard{ksq} & ~bitboard{attacker};
-    //         bitboard blocker_candidates = between & by(side);
-    //         if (between.size() == 1 && blocker_candidates.size() == 1) {
-    //             square blocker = blocker_candidates.front();
-    //             pinned.set(blocker);
-    //             valid_for_pinned[blocker] = line;
-    //         }
-    //     }
-    // };
 
 std::tuple<bitboard, bitboard> position_t::find_snipers_and_blockers(side_e side) const noexcept {
     bitboard snipers;
@@ -356,6 +338,8 @@ inline void position_t::setup(std::string_view fen) noexcept {
         new_state.blockers[side] = blockers;
     }
 
+    new_state.repetition = 1;
+
     new_state.captured = NO_PIECE;
     new_state.last_move = move_t{};
 
@@ -431,8 +415,6 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
 
     bitboard snipers = states.back().snipers[side];
     bitboard pinned = states.back().blockers[side];
-
-    // bitboard pinned = 0ull;
     bitboard valid_for_pinned[64];
     std::ranges::fill(valid_for_pinned, ~0ull);
 
@@ -441,49 +423,6 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
         square blocker = (line & pinned).front();
         valid_for_pinned[blocker] = line;
     }
-
-    // auto foo = [&](direction_e direction, bitboard candidates, std::function<square(bitboard)> find_nearest) {
-    //     bitboard ray = bitboards::ray(ksq, direction);
-    //     bitboard attacker_candidates = ray & candidates;
-    //     if (!attacker_candidates.empty()) {
-    //         square attacker = find_nearest(attacker_candidates);
-    //         bitboard line = bitboards::line(ksq, attacker);
-    //         bitboard between = line & by() & ~bitboard{ksq} & ~bitboard{attacker};
-    //         bitboard blocker_candidates = between & by(side);
-    //         if (between.size() == 1 && blocker_candidates.size() == 1) {
-    //             square blocker = blocker_candidates.front();
-    //             pinned.set(blocker);
-    //             valid_for_pinned[blocker] = line;
-    //         }
-    //     }
-    // };
-
-    // foo(NORTH, by(~side, ROOK, QUEEN), &bitboard::front);
-    // foo(SOUTH, by(~side, ROOK, QUEEN), &bitboard::back);
-    // foo(EAST, by(~side, ROOK, QUEEN), &bitboard::front);
-    // foo(WEST, by(~side, ROOK, QUEEN), &bitboard::back);
-    // foo(NORTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::front);
-    // foo(NORTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::front);
-    // foo(SOUTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::back);
-    // foo(SOUTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::back);
-
-    // bitboard ksr = bitboards::rook_queen(ksq, by()) & by(side);
-    // bitboard ksb = bitboards::bishop_queen(ksq, by()) & by(side);
-    // for (square sq : bitboards::rook_queen(ksq, 0ull) & by(~side, ROOK, QUEEN)) {
-    //     bitboard rsk = bitboards::rook_queen(sq, by()) & by(side);
-    //     bitboard pin = ksr & rsk;
-    //     pinned |= pin;
-    //     if (pin)
-    //         valid_for_pinned[pin.front()] = bitboards::line(ksq, sq);
-    // }
-    // for (square sq : bitboards::bishop_queen(ksq, 0ull) & by(~side, BISHOP, QUEEN)) {
-    //     bitboard bsk = bitboards::bishop_queen(sq, by()) & by(side);
-    //     bitboard pin = ksb & bsk;
-    //     pinned |= pin;
-    //     if (pin)
-    //         valid_for_pinned[pin.front()] = bitboards::line(ksq, sq);
-    // }
-
 
     valid_targets &= ~(by(side) | by(KING));
 
@@ -554,166 +493,6 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
         generate_promotion(targets & "1"_r, +7);
 
         targets = pawns >> 9 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"1"_r, +9);
-        generate_promotion(targets & "1"_r, +9);
-    }
-
-    for (square from : pawns & bitboards::pawn(en_passant & (valid_targets | valid_en_passant), ~side)) {
-        if (valid_for_pinned[from] & en_passant) {
-            square esq = en_passant.front();
-            square psq = side == WHITE ? esq - 8 : esq + 8;
-            if (ksq.rank() == psq.rank()) {
-                bitboard occ = by() & ~(bitboard{psq} | bitboard{from});
-                if (bitboards::rook_queen(ksq, occ) & by(~side, ROOK, QUEEN))
-                    continue;
-            }
-            buffer[index++] = {from, esq};
-        }
-    }
-
-    return buffer.first(index);
-}
-
-
-inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types) const noexcept {
-
-    size_t index = 0;
-    bitboard checkers = states.back().checkers;
-    bitboard en_passant = states.back().en_passant;
-    bitboard attacked = attackers(~side);
-    bitboard valid_en_passant = 0ull;
-    square ksq = by(side, KING).front();
-
-    // std::println("attacked:\n{:b}", attacked);
-
-    for (square to_square : bitboards::king(ksq) & ~attacked & ~by(side) & valid_targets) {
-        buffer[index++] = {ksq, to_square};
-    }
-
-    if (checkers.size() > 1) {
-        return buffer.first(index);
-    }
-
-    if (checkers.size() == 1) {
-        square from = by(side, KING).front();
-        square to = checkers.front();
-        valid_targets = bitboards::line(from, to);
-        if (side == BLACK) {
-            if (checkers == en_passant << 8)
-                valid_en_passant = en_passant;
-        } else {
-            if (checkers == en_passant >> 8)
-                valid_en_passant = en_passant;
-        }
-    }
-
-    if (valid_targets == bitboards::ALL) {
-        bitboard castle = states.back().castle;
-        if (side == WHITE) {
-            if ((castle & "h1"_b) && !(by() & "f1g1"_b) && !(attacked & "e1f1g1"_b))
-                buffer[index++] = {E1, G1};
-            if ((castle & "a1"_b) && !(by() & "b1c1d1"_b) && !(attacked & "e1d1c1"_b))
-                buffer[index++] = {E1, C1};
-        } else {
-            if ((castle & "h8"_b) && !(by() & "f8g8"_b) && !(attacked & "e8f8g8"_b))
-                buffer[index++] = {E8, G8};
-            if ((castle & "a8"_b) && !(by() & "b8c8d8"_b) && !(attacked & "e8d8c8"_b))
-                buffer[index++] = {E8, C8};
-        }
-    }
-
-
-    bitboard pinned = 0ull;
-    bitboard valid_for_pinned[64];
-    std::ranges::fill(valid_for_pinned, ~0ull);
-
-    bitboard ksr = bitboards::rook_queen(ksq, by()) & by(side);
-    bitboard ksb = bitboards::bishop_queen(ksq, by()) & by(side);
-    for (square sq : bitboards::rook_queen(ksq, 0ull) & by(~side, ROOK, QUEEN)) {
-        bitboard rsk = bitboards::rook_queen(sq, by()) & by(side);
-        bitboard pin = ksr & rsk;
-        pinned |= pin;
-        if (pin)
-            valid_for_pinned[pin.front()] = bitboards::line(ksq, sq);
-    }
-    for (square sq : bitboards::bishop_queen(ksq, 0ull) & by(~side, BISHOP, QUEEN)) {
-        bitboard bsk = bitboards::bishop_queen(sq, by()) & by(side);
-        bitboard pin = ksb & bsk;
-        pinned |= pin;
-        if (pin)
-            valid_for_pinned[pin.front()] = bitboards::line(ksq, sq);
-    }
-
-
-    valid_targets &= ~(by(side) | by(KING));
-
-    for (square from_square : by(side, KNIGHT) & ~pinned) {
-        for (square to_square : bitboards::knight(from_square) & valid_targets) {
-            buffer[index++] = {from_square, to_square};
-        }
-    }
-
-    for (square from_square : by(side, ROOK, QUEEN)) {
-        for (square to_square : bitboards::rook_queen(from_square, by()) & valid_targets & valid_for_pinned[from_square]) {
-            buffer[index++] = {from_square, to_square};
-        }
-    }
-
-    for (square from_square : by(side, BISHOP, QUEEN)) {
-        for (square to_square : bitboards::bishop_queen(from_square, by()) & valid_targets & valid_for_pinned[from_square]) {
-            buffer[index++] = {from_square, to_square};
-        }
-    }   
-
-    const auto generate_normal = [&](bitboard targets, int delta) {
-        for (square to : targets)
-            if (valid_for_pinned[to + delta] & bitboard{to})
-                buffer[index++] = {to + delta, to};
-    };
-
-    const auto generate_promotion = [&](bitboard targets, int delta) {
-        for (square to : targets)
-            if (valid_for_pinned[to + delta] & bitboard{to})
-                for (type_e type : promotion_types)
-                    buffer[index++] = {to + delta, to, type};
-    };
-
-    bitboard pawns = by(side, PAWN);
-
-    if (side == WHITE) {
-        bitboard push = pawns << 8 & ~by();
-        bitboard targets;
-
-        targets = push & (valid_targets | promotion_targets);
-        generate_normal(targets & ~"8"_r, -8);
-        generate_promotion(targets & "8"_r, -8);
-
-        targets = push << 8 & ~by() & "4"_r & valid_targets;
-        generate_normal(targets, -16);
-
-        targets = pawns << 7 & ~"h"_f & by(~side) & valid_targets;
-        generate_normal(targets & ~"8"_r, -7);
-        generate_promotion(targets & "8"_r, -7);
-
-        targets = pawns << 9 & ~"a"_f & by(~side) & valid_targets;
-        generate_normal(targets & ~"8"_r, -9);
-        generate_promotion(targets & "8"_r, -9);
-    } else {
-        bitboard push = pawns >> 8 & ~by();
-        bitboard targets;
-
-        targets = push & (valid_targets | promotion_targets);
-        generate_normal(targets & ~"1"_r, +8);
-        generate_promotion(targets & "1"_r, +8);
-
-        targets = push >> 8 & ~by() & "5"_r & valid_targets;
-        generate_normal(targets, +16);
-
-        targets = pawns >> 7 & ~"a"_f & by(~side) & valid_targets;
-        generate_normal(targets & ~"1"_r, +7);
-        generate_promotion(targets & "1"_r, +7);
-
-        targets = pawns >> 9 & ~"h"_f & by(~side) & valid_targets;
         generate_normal(targets & ~"1"_r, +9);
         generate_promotion(targets & "1"_r, +9);
     }
@@ -879,26 +658,14 @@ inline void position_t::make_move(move_t move) noexcept {
 
     auto king_square = by(side, KING).front();
     new_state.checkers = attackers(king_square) & by(~side);
-    // auto king_square = by(side, KING).front();
-    // new_state.checkers = attackers(king_square, ~side) & by(~side);
-
-    // bitboard foo[TYPE_MAX];
-    // foo[PAWN] = bitboards::pawn(king_square, ~side);
-    // foo[KNIGHT] = bitboards::knight(king_square);
-    // foo[BISHOP] = bitboards::bishop_queen(king_square, by());
-    // foo[ROOK] = bitboards::rook_queen(king_square, by());
-    // foo[QUEEN] = foo[ROOK] | foo[BISHOP];
-
-    // auto [snipers, blockers] = find_snipers_and_blockers(side);
-    // new_state.snipers = snipers;
-    // new_state.blockers = blockers;
-
     
     for (side_e side : {WHITE, BLACK}) {
         auto [snipers, blockers] = find_snipers_and_blockers(side);
         new_state.snipers[side] = snipers;
         new_state.blockers[side] = blockers;
     }
+
+    new_state.repetition = 1 + std::ranges::count(states, new_state.hash, &state_t::hash);
 
     states.push_back(new_state);
 }
@@ -1012,16 +779,13 @@ inline void position_t::make_null_move() noexcept {
     auto king_square = by(side, KING).front();
     new_state.checkers = attackers(king_square) & by(~side);
 
-    // auto [snipers, blockers] = find_snipers_and_blockers(side);
-    // new_state.snipers = snipers;
-    // new_state.blockers = blockers;
-
-    
     for (side_e side : {WHITE, BLACK}) {
         auto [snipers, blockers] = find_snipers_and_blockers(side);
         new_state.snipers[side] = snipers;
         new_state.blockers[side] = blockers;
     }
+
+    new_state.repetition = 1 + std::ranges::count(states, new_state.hash, &state_t::hash);
 
     states.push_back(new_state);
 }
