@@ -309,14 +309,116 @@ struct searcher_t {
         return {alpha, pv.first(length)};
     }
 
+    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    //     const int ASPIRATION_DELTA = 50;
+    //     int window_alpha = score - ASPIRATION_DELTA;
+    //     int window_beta = score + ASPIRATION_DELTA;
+
+    //     result_t result = (*this)(window_alpha, window_beta, 0, depth, pv);
+    //     if (result.score <= window_alpha || result.score >= window_beta) {
+    //         result = (*this)(-30000, window_beta, 0, depth, pv);
+    //     } else if (result.score >= window_beta) {
+    //         result = (*this)(window_alpha, 30000, 0, depth, pv);
+    //     }
+    //     return result;
+    // }
+
+    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    //     constexpr int MATE = 30000;
+    //     int delta = 25; // initial half-window; tune if desired (e.g., 16 + 4*depth)
+
+    //     int alpha = std::max(-MATE, score - delta);
+    //     int beta  = std::min(+MATE, score + delta);
+
+    //     result_t result = (*this)(alpha, beta, 0, depth, pv);
+
+    //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
+    //     while (result.score <= alpha || result.score >= beta) {
+    //         if (should_stop()) break;
+    //         delta <<= 2;
+    //         if (result.score <= alpha)
+    //             alpha = std::max(-MATE, score - delta);
+    //         else
+    //             beta = std::min(+MATE, score + delta);
+    //         result_t result2 = (*this)(alpha, beta, 0, depth, pv_buffer);
+    //         if (!result2.pv.empty()) {
+    //             result = result_t{result2.score, pv.first(result2.pv.size())};
+    //             std::ranges::copy(result2.pv, pv.begin());
+    //         } else {
+    //             result = {result2.score, result.pv};
+    //         }
+    //         if (alpha <= -MATE || beta >= MATE)
+    //             break; // full window reached
+    //     }
+
+    //     return result;
+    // }
+
     move_t operator()(int depth) {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-        move_t best;
+        constexpr std::string_view none = "bestmove (none)\n"sv;
+
+        if (position.is_no_material()) {
+            constexpr std::string_view info = "info string draw by insufficient material\n"sv;
+            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+            std::fflush(stdout);
+            return move_t{};
+        }
+
+        if (position.is_50_moves_rule()) {
+            constexpr std::string_view info = "info string draw by 50 moves rule\n"sv;
+            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+            std::fflush(stdout);
+            return move_t{};
+        }
+
+        if (position.is_3_fold_repetition()) {
+            constexpr std::string_view info = "info string draw by 3-fold repetition\n"sv;
+            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+            std::fflush(stdout);
+            return move_t{};
+        }
+
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> move_buffer;
+        std::span<move_t> moves = position.generate_all_moves(move_buffer);
+
+        if (moves.empty()) {
+            if (position.is_check()) {
+                constexpr std::string_view info = "info string checkmate\n"sv;
+                std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+                std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+                std::fflush(stdout);
+            } else {
+                constexpr std::string_view info = "info string stalemate\n"sv;
+                std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+                std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+                std::fflush(stdout);
+            }
+            return move_t{};
+        }
+
+        if (moves.size() == 1) {
+            // constexpr std::string_view info = "info string singular move\n"sv;
+            char buffer[20];
+            char* out = std::format_to(buffer, "bestmove {}\n", moves.front());
+            // std::fwrite(info.data(), sizeof(char), info.size(), stdout);
+            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+            std::fflush(stdout);
+            return moves.front();
+        }
+
+        move_t best{};
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
         auto t0 = Clock::now();
+        // int score = (*this)(-30000, +30000, 0);
         for (int iteration = 1; iteration <= depth; ++iteration) {
             result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
+            // result_t result = aspiration_window(score, iteration, pv_buffer);
+            // score = result.score;
             if (should_stop()) {
                 break;
             }
@@ -324,16 +426,32 @@ struct searcher_t {
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
 
-            char buffer[1024];
-            char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {} nodes {} nps {} hashfull {} time {} pv {}\n", iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
-            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
-            std::fflush(stdout);
-
             if (result.score < -29000 || result.score > 29000) {
-                break;
+                constexpr int MATE_SCORE = 30000;
+                int plies = MATE_SCORE - std::abs(result.score);
+                int mate_in = (plies + 1) / 2;
+                if (result.score < 0)
+                    mate_in = -mate_in;
+                char buffer[1024];
+                char* out = std::format_to(buffer, "info depth {} seldepth {} score mate {:+} nodes {} nps {} hashfull {} time {} pv {}\n", 
+                    iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+                std::fflush(stdout);
+            } else {
+                char buffer[1024];
+                char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
+                    iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+                std::fflush(stdout);
             }
+
             history.age();
         }
+
+        char buffer[20];
+        char* out = std::format_to(buffer, "bestmove {}\n", best);
+        std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+        std::fflush(stdout);
         return best;
     }
 };
