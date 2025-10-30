@@ -138,7 +138,7 @@ private:
             };
             searcher_t searcher{position_, transposition, history, evaluator, should_stop};
             // move_t best = 
-            searcher(100);
+            (void) searcher(100);
 
             // char buffer[20];
             // char* out = std::format_to(buffer, "bestmove {}\n", best);
