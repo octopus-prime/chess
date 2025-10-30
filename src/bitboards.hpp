@@ -35,7 +35,6 @@ class bitboards
   static const slider_lookup_t lookup_rook_queen;
   static const slider_lookup_t lookup_bishop_queen;
 
-  static constexpr bitboard permutation(bitboard iteration, bitboard mask) noexcept;
   static auto expand(auto in, auto empty) noexcept;
 
 public:
@@ -136,7 +135,8 @@ inline bitboard bitboards::king(bitboard in) noexcept
   constexpr quadboard r = {~"h"_f, ~""_f, ~"a"_f, ~"h"_f};
   quadboard b = {in, in, in, in};
   quadboard t = ((b << s) & l) | ((b >> s) & r);
-  return t[0] | t[1] | t[2] | t[3];
+  return __builtin_reduce_or(t);
+  // return t[0] | t[1] | t[2] | t[3];
 }
 
 inline bitboard bitboards::knight(bitboard in) noexcept
@@ -146,7 +146,8 @@ inline bitboard bitboards::knight(bitboard in) noexcept
   constexpr quadboard r = {~"gh"_f, ~"h"_f, ~"a"_f, ~"ab"_f};
   quadboard b = {in, in, in, in};
   quadboard t = ((b << s) & l) | ((b >> s) & r);
-  return t[0] | t[1] | t[2] | t[3];
+  return __builtin_reduce_or(t);
+  // return t[0] | t[1] | t[2] | t[3];
 }
 
 inline auto bitboards::expand(auto in, auto empty) noexcept {
@@ -224,18 +225,6 @@ inline bitboard bitboards::pawn(bitboard in, side_e side) noexcept {
   return side == WHITE ? pawn<WHITE>(in) : pawn<BLACK>(in);
 }
 
-constexpr bitboard bitboards::permutation(bitboard iteration, bitboard mask) noexcept {
-  bitboard blockers = 0ull;
-  while (iteration != 0ull) {
-    if ((iteration & bitboard{1ull}) != bitboard{0ull}) {
-      blockers |= bitboard{mask.front()};
-    }
-    iteration >>= 1;
-    mask &= (mask - 1ull);
-  }
-  return blockers;
-}
-
 const bitboards::leaper_lookup_t bitboards::lookup_king = []() noexcept {
   leaper_lookup_t lookup{};
   for (square sq : ALL)
@@ -281,7 +270,7 @@ const bitboards::slider_lookup_t bitboards::lookup_rook_queen = []() noexcept {
     auto size = 1ull << rooks.size();
     blocks[sq].data.resize(size);
     for (std::uint64_t index = 0; index < size; ++index) {
-      bitboard blockers = permutation(index, rooks);
+      bitboard blockers = _pdep_u64(index, rooks);
       blocks[sq].data[index] = rook_queen(board, blockers);
     }
     blocks[sq].mask = rooks;
@@ -297,7 +286,7 @@ const bitboards::slider_lookup_t bitboards::lookup_bishop_queen = []() noexcept 
     auto size = 1ull << bishops.size();
     blocks[sq].data.resize(size);
     for (std::uint64_t index = 0; index < size; ++index) {
-      bitboard blockers = permutation(index, bishops);
+      bitboard blockers = _pdep_u64(index, bishops);
       blocks[sq].data[index] = bishop_queen(board, blockers);
     }
     blocks[sq].mask = bishops;
