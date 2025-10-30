@@ -90,12 +90,13 @@ void affine_tranform(const std::span<const std::uint8_t, 3072> input, const std:
     // auto nnz = find_nnz(input32, std::span{buf});
 
     const __m512i       increment    = _mm512_set1_epi16(32);
-    __m512i             base = _mm512_set_epi16(  // Same permute order as _mm512_packus_epi32()
-      31, 30, 29, 28, 15, 14, 13, 12, 27, 26, 25, 24, 11, 10, 9, 8, 23, 22, 21, 20, 7, 6, 5, 4, 19, 18, 17, 16, 3, 2, 1, 0);
+    __m512i base = _mm512_set_epi16(31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+                                    15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
     auto count = 0;
     for (auto&& chunk : span_cast<const __m512i>(input32) | std::views::chunk(2)) {
-        const __m512i   inputV01 = _mm512_packus_epi32(chunk[0], chunk[1]);
-        const __mmask32 nnzMask  = _mm512_test_epi16_mask(inputV01, inputV01);
+        const __mmask16 mask0 = _mm512_test_epi32_mask(chunk[0], chunk[0]);
+        const __mmask16 mask1 = _mm512_test_epi32_mask(chunk[1], chunk[1]);
+        const __mmask32 nnzMask = _mm512_kunpackw(mask1, mask0);
         _mm512_mask_compressstoreu_epi16(buf + count, nnzMask, base);
         count += std::popcount(nnzMask);
         base = _mm512_add_epi16(base, increment);
