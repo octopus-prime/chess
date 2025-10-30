@@ -519,254 +519,324 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
 }
 
 inline void position_t::make_move(move_t move) noexcept {
-    state_t new_state = states.back();
+    // Snapshot previous state, we’ll push the updated one at the end
+    const state_t& prev = states.back();
+    state_t st = prev;
 
-    square from_square = move.from();
-    square to_square = move.to();
-    piece moving_piece = board[from_square];
+    const square from = move.from();
+    const square to   = move.to();
 
+    piece moving = board[from];
+    piece captured = board[to];
 
-    if (moving_piece.type() == PAWN && new_state.en_passant == to_square) {
-        square victim_square = side == WHITE ? to_square - 8 : to_square + 8;
-        std::swap(board[to_square], board[victim_square]);
-        occupied_by_type[PAWN].reset(victim_square);
-        occupied_by_type[PAWN].set(to_square);
-        occupied_by_side[~side].reset(victim_square);
-        occupied_by_side[~side].set(to_square);
-        new_state.hash ^= hashes::hash(piece{~side, PAWN}, victim_square);
-        new_state.hash ^= hashes::hash(piece{~side, PAWN}, to_square);
+    const type_e prom = move.promotion();
+    const bool is_promotion = (prom != NO_TYPE);
+    const bool moving_is_pawn = (moving.type() == PAWN);
+    const bool moving_is_king = (moving.type() == KING);
+    const bool moving_is_rook = (moving.type() == ROOK);
+
+    const bitboard from_bb{from};
+    const bitboard to_bb{to};
+
+    // Clear side-to-move’s EP from hash/state
+    st.hash ^= hashes::en_passant(st.en_passant);
+    st.en_passant = NO_SQUARE;
+
+    // EP capture (special, do once, no swap)
+    if (moving_is_pawn && prev.en_passant == to) {
+        const square victim_sq = (side == WHITE) ? to - 8 : to + 8;
+        piece victim = board[victim_sq]; // must be opponent pawn
+
+        // Remove victim from board/bitboards/material/hash
+        board[victim_sq] = NO_PIECE;
+        occupied_by_type[PAWN].reset(victim_sq);
+        occupied_by_side[~side].reset(victim_sq);
+        st.hash ^= hashes::hash(victim, victim_sq);
+        material[~side] -= type_values[PAWN];
+
+        captured = victim; // for state bookkeeping
+        st.half_move = 0;
+    } else if (captured != NO_PIECE) {
+        // Normal capture (at 'to')
+        occupied_by_type[captured.type()].reset(to);
+        occupied_by_side[captured.side()].reset(to);
+        st.hash ^= hashes::hash(captured, to);
+        material[~side] -= type_values[captured.type()];
+        st.half_move = 0;
+
+        // If captured a rook on its original square, update castle rights
+        if (captured.type() == ROOK) {
+            if (to == H1 || to == A1 || to == H8 || to == A8) {
+                const bitboard old = st.castle;
+                st.castle.reset(bitboard{to} & "a1h1a8h8"_b);
+                if (old != st.castle) {
+                    st.hash ^= hashes::castle(old);
+                    st.hash ^= hashes::castle(st.castle);
+                }
+            }
+        }
     }
 
+    // Move piece on board
+    board[from] = NO_PIECE;
 
-    piece captured_piece = board[to_square];
-    
-    // ✅ Handle promotion
-    piece final_piece = moving_piece;
-    if (move.promotion() != NO_TYPE) {
-        final_piece = piece{side, move.promotion()};
+    piece final_piece = moving;
+    if (is_promotion) {
+        final_piece = piece{side, prom};
     }
+    board[to] = final_piece;
 
-    // ✅ Update board with correct piece
-    board[to_square] = final_piece;
-    board[from_square] = NO_PIECE;
+    // Update occupancy for mover (handle promotion vs normal)
+    if (is_promotion) {
+        // Remove pawn at from
+        occupied_by_type[PAWN].reset(from);
+        occupied_by_side[side].reset(from);
+        st.hash ^= hashes::hash(moving, from);
 
-    new_state.half_move++;
-    new_state.hash ^= hashes::en_passant(new_state.en_passant);
-    new_state.en_passant = NO_SQUARE;
+        // Add promoted piece at to
+        occupied_by_type[final_piece.type()].set(to);
+        occupied_by_side[side].set(to);
+        st.hash ^= hashes::hash(final_piece, to);
 
-    // ✅ Handle capture (including promotion captures)
-    if (captured_piece != NO_PIECE) {
-        // std::println("before:{}{}{}{}{}{}{}", occupied_by_type[0], occupied_by_type[1], occupied_by_type[2], occupied_by_type[3], occupied_by_type[4], occupied_by_type[5], occupied_by_type[6]);
-        occupied_by_type[captured_piece.type()].reset(to_square);
-        // std::println("after:{}{}{}{}{}{}{}", occupied_by_type[0], occupied_by_type[1], occupied_by_type[2], occupied_by_type[3], occupied_by_type[4], occupied_by_type[5], occupied_by_type[6]);
-        occupied_by_side[captured_piece.side()].reset(to_square);
-        new_state.hash ^= hashes::hash(captured_piece, to_square);
-        material[~side] -= type_values[captured_piece.type()];
-        new_state.half_move = 0;
-        new_state.hash ^= hashes::castle(new_state.castle);
-        new_state.castle.reset(to_square);
-        new_state.hash ^= hashes::castle(new_state.castle);
-    }
-
-    // ✅ Update occupied bitboards for promotion
-    if (move.promotion() != NO_TYPE) {
-        // Remove pawn
-        occupied_by_type[moving_piece.type()].reset(from_square);
-        occupied_by_side[moving_piece.side()].reset(from_square);
-        new_state.hash ^= hashes::hash(moving_piece, from_square);
-        
-        // Add promoted piece
-        occupied_by_type[final_piece.type()].set(to_square);
-        occupied_by_side[final_piece.side()].set(to_square);
-        new_state.hash ^= hashes::hash(final_piece, to_square);
-        
-        // Update material count
-        material[side] += type_values[final_piece.type()] - type_values[moving_piece.type()];
+        // Material delta (replace pawn by prom)
+        material[side] += (type_values[final_piece.type()] - type_values[PAWN]);
+        st.half_move = 0; // promotion resets 50-move
     } else {
-        // Normal move
-        occupied_by_type[moving_piece.type()].set(to_square);
-        occupied_by_type[moving_piece.type()].reset(from_square);
-        occupied_by_side[moving_piece.side()].set(to_square);
-        occupied_by_side[moving_piece.side()].reset(from_square);
-        new_state.hash ^= hashes::hash(moving_piece, from_square);
-        new_state.hash ^= hashes::hash(final_piece, to_square);
+        // Normal move for the moving piece
+        occupied_by_type[moving.type()].reset(from);
+        occupied_by_type[moving.type()].set(to);
+        occupied_by_side[side].reset(from);
+        occupied_by_side[side].set(to);
+        st.hash ^= hashes::hash(moving, from);
+        st.hash ^= hashes::hash(final_piece, to);
     }
 
-    // Castle handling (unchanged)
-    switch (moving_piece) {
-        case WKING:
-            if (from_square == E1 && to_square == G1) {
-                occupied_by_type[ROOK].flip("f1h1"_b);
-                occupied_by_side[WHITE].flip("f1h1"_b);
-                std::swap(board[F1], board[H1]);
-                new_state.hash ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
-            } else if (from_square == E1 && to_square == C1) {
-                occupied_by_type[ROOK].flip("a1d1"_b);
-                occupied_by_side[WHITE].flip("d1a1"_b);
-                std::swap(board[A1], board[D1]);
-                new_state.hash ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
+    // Castling (king moves rook)
+    if (moving_is_king) {
+        if (from == E1 && to == G1) {
+            // White O-O
+            board[F1] = WROOK; board[H1] = NO_PIECE;
+            occupied_by_type[ROOK].flip("f1h1"_b);
+            occupied_by_side[WHITE].flip("f1h1"_b);
+            st.hash ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
+        } else if (from == E1 && to == C1) {
+            // White O-O-O
+            board[D1] = WROOK; board[A1] = NO_PIECE;
+            occupied_by_type[ROOK].flip("a1d1"_b);
+            occupied_by_side[WHITE].flip("d1a1"_b);
+            st.hash ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
+        } else if (from == E8 && to == G8) {
+            // Black O-O
+            board[F8] = BROOK; board[H8] = NO_PIECE;
+            occupied_by_type[ROOK].flip("f8h8"_b);
+            occupied_by_side[BLACK].flip("f8h8"_b);
+            st.hash ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
+        } else if (from == E8 && to == C8) {
+            // Black O-O-O
+            board[D8] = BROOK; board[A8] = NO_PIECE;
+            occupied_by_type[ROOK].flip("a8d8"_b);
+            occupied_by_side[BLACK].flip("d8a8"_b);
+            st.hash ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
+        }
+
+        // Update castle rights on king move
+        const bitboard old = st.castle;
+        if (side == WHITE)
+            st.castle.reset("a1h1"_b);
+        else
+            st.castle.reset("a8h8"_b);
+        if (old != st.castle) {
+            st.hash ^= hashes::castle(old);
+            st.hash ^= hashes::castle(st.castle);
+        }
+    } else if (moving_is_rook) {
+        // Rook moves off its original square -> update rights
+        if (from == H1 || from == A1 || from == H8 || from == A8) {
+            const bitboard old = st.castle;
+            st.castle.reset(bitboard{from} & "a1h1a8h8"_b);
+            if (old != st.castle) {
+                st.hash ^= hashes::castle(old);
+                st.hash ^= hashes::castle(st.castle);
             }
-            new_state.castle.reset("a1h1"_b);
-            new_state.hash ^= hashes::castle(states.back().castle);
-            new_state.hash ^= hashes::castle(new_state.castle);
-            break;
-        case BKING:
-            if (from_square == E8 && to_square == G8) {
-                occupied_by_type[ROOK].flip("f8h8"_b);
-                occupied_by_side[BLACK].flip("f8h8"_b);
-                std::swap(board[F8], board[H8]);
-                new_state.hash ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
-            } else if (from_square == E8 && to_square == C8) {
-                occupied_by_type[ROOK].flip("a8d8"_b);
-                occupied_by_side[BLACK].flip("d8a8"_b);
-                std::swap(board[A8], board[D8]);
-                new_state.hash ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
-            }
-            new_state.castle.reset("a8h8"_b);
-            new_state.hash ^= hashes::castle(states.back().castle);
-            new_state.hash ^= hashes::castle(new_state.castle);
-            break;
-        case WROOK:
-            new_state.castle.reset("a1h1"_b & bitboard{from_square});
-            new_state.hash ^= hashes::castle(states.back().castle);
-            new_state.hash ^= hashes::castle(new_state.castle);
-            break;
-        case BROOK:
-            new_state.castle.reset("a8h8"_b & bitboard{from_square});
-            new_state.hash ^= hashes::castle(states.back().castle);
-            new_state.hash ^= hashes::castle(new_state.castle);
-            break;
-        case WPAWN:
-            if (to_square - from_square == +16) {
-                new_state.en_passant = from_square + 8;
-                new_state.hash ^= hashes::en_passant(new_state.en_passant);
-            }
-            new_state.half_move = 0;
-            break;
-        case BPAWN:
-            if (to_square - from_square == -16) {
-                new_state.en_passant = from_square - 8;
-                new_state.hash ^= hashes::en_passant(new_state.en_passant);
-            }
-            new_state.half_move = 0;
-            break;
-        default:
-            break;
+        }
     }
 
-    full_move += side == WHITE;
-    new_state.captured = captured_piece;
-    new_state.hash ^= hashes::side();
-    new_state.last_move = move;
+    // New EP square after double pawn push
+    if (moving_is_pawn) {
+        const int delta = static_cast<int>(to) - static_cast<int>(from);
+        if (delta == +16) {
+            st.en_passant = from + 8;
+            st.hash ^= hashes::en_passant(st.en_passant);
+            st.half_move = 0;
+        } else if (delta == -16) {
+            st.en_passant = from - 8;
+            st.hash ^= hashes::en_passant(st.en_passant);
+            st.half_move = 0;
+        } else if (!is_promotion && captured == NO_PIECE) {
+            // quiet pawn move (non-2-step) resets half-move
+            st.half_move = 0;
+        }
+    }
 
+    // Half-move clock for non-pawn quiets
+    if (!moving_is_pawn && captured == NO_PIECE && !is_promotion) {
+        st.half_move++;
+    }
+
+    // Full-move, side to move, last move, captured piece
+    full_move += (side == WHITE);
+    st.captured = captured;
+    st.hash ^= hashes::side();
+    st.last_move = move;
+
+    // Switch side
     side = ~side;
 
-    auto king_square = by(side, KING).front();
-    new_state.checkers = attackers(king_square) & by(~side);
-    
-    for (side_e side : {WHITE, BLACK}) {
-        auto [snipers, blockers] = find_snipers_and_blockers(side);
-        new_state.snipers[side] = snipers;
-        new_state.blockers[side] = blockers;
+    // Recompute checkers/snipers/blockers (kept as in your code)
+    const square ksq = by(side, KING).front();
+    st.checkers = attackers(ksq) & by(~side);
+    for (side_e s : {WHITE, BLACK}) {
+        auto [sn, bl] = find_snipers_and_blockers(s);
+        st.snipers[s] = sn;
+        st.blockers[s] = bl;
     }
 
-    new_state.repetition = 1 + std::ranges::count(states, new_state.hash, &state_t::hash);
+    // Repetition count (same as before; consider a hash->count map for speed)
+    st.repetition = 1 + std::ranges::count(states, st.hash, &state_t::hash);
 
-    states.push_back(new_state);
+    // Commit new state
+    states.push_back(st);
 }
 
 inline void position_t::undo_move(move_t move) noexcept {
+    // Current state after the move
+    const state_t& cur = states.back();
+    // State before the move (exists because we always push on make_move)
+    const state_t& prev = states[states.size() - 2];
+
+    // Restore side/full-move first
     side = ~side;
+    full_move -= (side == WHITE);
 
-    square from_square = move.from();
-    square to_square = move.to();
-    piece final_piece = board[to_square];  // This might be promoted piece
-    piece captured_piece = states.back().captured;
+    const square from = move.from();
+    const square to   = move.to();
 
-    // ✅ Determine original moving piece
+    // Piece currently on 'to' (could be promoted piece)
+    const piece final_piece    = board[to];
+    const piece captured_piece = cur.captured;
+    const bool  is_promotion   = (move.promotion() != NO_TYPE);
+
+    // Original moving piece (promotion -> pawn)
     piece moving_piece = final_piece;
-    if (move.promotion() != NO_TYPE) {
-        // If it was a promotion, original piece was a pawn
-        moving_piece = piece{side, PAWN};
+    if (is_promotion) moving_piece = piece{side, PAWN};
+
+    // Detect en-passant via previous state's ep-square
+    const bool is_en_passant = (moving_piece.type() == PAWN) &&
+                               (prev.en_passant != NO_SQUARE) &&
+                               (to == prev.en_passant) &&
+                               (captured_piece != NO_PIECE) &&
+                               (captured_piece.type() == PAWN);
+
+    // Fast path: en-passant undo
+    if (is_en_passant) {
+        const square victim_sq = (side == WHITE) ? to - 8 : to + 8;
+
+        // Board
+        board[from]      = moving_piece;     // pawn back
+        board[to]        = NO_PIECE;         // ep target square was empty before
+        board[victim_sq] = captured_piece;   // restore captured pawn
+
+        // Occupancy (mover)
+        occupied_by_type[PAWN].reset(to);
+        occupied_by_side[side].reset(to);
+        occupied_by_type[PAWN].set(from);
+        occupied_by_side[side].set(from);
+
+        // Occupancy (victim)
+        occupied_by_type[PAWN].set(victim_sq);
+        occupied_by_side[~side].set(victim_sq);
+
+        // Material: unchanged for EP (already handled in make_move)
+        states.pop_back();
+        return;
     }
 
-    // ✅ Restore board
-    board[from_square] = moving_piece;  // Original piece goes back
-    board[to_square] = captured_piece;  // Captured piece restored (or NO_PIECE)
+    // Promotion undo
+    if (is_promotion) {
+        // Board: promoted piece -> captured (or empty), pawn back to 'from'
+        board[from] = moving_piece;           // pawn
+        board[to]   = captured_piece;         // restore captured (or empty)
 
-    // ✅ Update occupied bitboards for promotion
-    if (move.promotion() != NO_TYPE) {
-        // Remove promoted piece
-        occupied_by_type[final_piece.type()].reset(to_square);
-        occupied_by_side[final_piece.side()].reset(to_square);
-        
-        // Restore original pawn
-        occupied_by_type[moving_piece.type()].set(from_square);
-        occupied_by_side[moving_piece.side()].set(from_square);
-        
-        // Update material count
-        material[side] -= type_values[final_piece.type()] - type_values[moving_piece.type()];
-    } else {
-        // Normal move undo
-        occupied_by_type[moving_piece.type()].flip(to_square);
-        occupied_by_type[moving_piece.type()].flip(from_square);
-        occupied_by_side[moving_piece.side()].flip(to_square);
-        occupied_by_side[moving_piece.side()].flip(from_square);
+        // Occupancy (remove promoted at 'to', add pawn at 'from')
+        occupied_by_type[final_piece.type()].reset(to);
+        occupied_by_side[side].reset(to);
+        occupied_by_type[PAWN].set(from);
+        occupied_by_side[side].set(from);
+
+        // Restore captured occupancy/material if any
+        if (captured_piece != NO_PIECE) {
+            occupied_by_type[captured_piece.type()].set(to);
+            occupied_by_side[captured_piece.side()].set(to);
+            material[~side] += type_values[captured_piece.type()];
+        }
+
+        // Material delta (remove promotion gain)
+        material[side] -= (type_values[final_piece.type()] - type_values[PAWN]);
+
+        states.pop_back();
+        return;
     }
 
-    // ✅ Restore captured piece
-    if (captured_piece != NO_PIECE) {
-        occupied_by_type[captured_piece.type()].set(to_square);
-        occupied_by_side[captured_piece.side()].set(to_square);
-        material[~side] += type_values[captured_piece.type()];
-    }
+    // Normal move (includes normal captures and castling)
+    {
+        // Board
+        board[from] = moving_piece;
+        board[to]   = captured_piece;
 
-    // Castle handling (unchanged)
-    switch (moving_piece) {
-        case WKING:
-            if (from_square == E1 && to_square == G1) {
+        // Occupancy for mover
+        const type_e mt = moving_piece.type();
+        occupied_by_type[mt].reset(to);
+        occupied_by_type[mt].set(from);
+        occupied_by_side[side].reset(to);
+        occupied_by_side[side].set(from);
+
+        // Restore captured piece occupancy/material
+        if (captured_piece != NO_PIECE) {
+            occupied_by_type[captured_piece.type()].set(to);
+            occupied_by_side[captured_piece.side()].set(to);
+            material[~side] += type_values[captured_piece.type()];
+        }
+
+        // Castling rook rollback (detect by king moving E->G/C)
+        if (mt == KING) {
+            if (from == E1 && to == G1) { // White O-O
+                board[H1] = WROOK; board[F1] = NO_PIECE;
                 occupied_by_type[ROOK].flip("f1h1"_b);
                 occupied_by_side[WHITE].flip("f1h1"_b);
-                std::swap(board[F1], board[H1]);
-            } else if (from_square == E1 && to_square == C1) {
+            } else if (from == E1 && to == C1) { // White O-O-O
+                board[A1] = WROOK; board[D1] = NO_PIECE;
                 occupied_by_type[ROOK].flip("a1d1"_b);
                 occupied_by_side[WHITE].flip("d1a1"_b);
-                std::swap(board[A1], board[D1]);
-            }
-            break;
-        case BKING:
-            if (from_square == E8 && to_square == G8) {
+            } else if (from == E8 && to == G8) { // Black O-O
+                board[H8] = BROOK; board[F8] = NO_PIECE;
                 occupied_by_type[ROOK].flip("f8h8"_b);
                 occupied_by_side[BLACK].flip("f8h8"_b);
-                std::swap(board[F8], board[H8]);
-            } else if (from_square == E8 && to_square == C8) {
+            } else if (from == E8 && to == C8) { // Black O-O-O
+                board[A8] = BROOK; board[D8] = NO_PIECE;
                 occupied_by_type[ROOK].flip("a8d8"_b);
                 occupied_by_side[BLACK].flip("d8a8"_b);
-                std::swap(board[A8], board[D8]);
             }
-            break;
-        default:
-            break;
+        }
     }
 
-    full_move -= side == WHITE;
+    // Pop state last (restores hash, castle, ep, clocks, checkers, pins, repetition)
     states.pop_back();
-
-    if (moving_piece.type() == PAWN && states.back().en_passant == to_square) {
-        square victim_square = side == WHITE ? to_square - 8 : to_square + 8;
-        std::swap(board[to_square], board[victim_square]);
-        occupied_by_type[PAWN].set(victim_square);
-        occupied_by_type[PAWN].reset(to_square);
-        occupied_by_side[~side].set(victim_square);
-        occupied_by_side[~side].reset(to_square);
-    }
 }
 
 inline bool position_t::can_null_move() const noexcept {
     bitboard non_pawn_pieces = by(side, KNIGHT, BISHOP) | by(side, ROOK, QUEEN);
     return !is_check() && last_move() != move_t{} && non_pawn_pieces.size() > 1 && by(side).size() > 4 && by(~side).size() > 4;
 }
-
 
 inline void position_t::make_null_move() noexcept {
     state_t new_state = states.back();
