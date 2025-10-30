@@ -6,6 +6,7 @@
 #include "evaluator.hpp"
 #include "move_picker.hpp"
 #include <chrono>
+#include <expected>
 
 struct searcher_t {
 
@@ -354,33 +355,21 @@ struct searcher_t {
     //     return result;
     // }
 
-    move_t operator()(int depth) {
+    enum unexpected_e : uint8_t { insufficient_material, rule50, repetition, checkmate, stalemate };
+
+    std::expected<move_t, unexpected_e> search(int depth) noexcept {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-        constexpr std::string_view none = "bestmove (none)\n"sv;
-
         if (position.is_no_material()) {
-            constexpr std::string_view info = "info string draw by insufficient material\n"sv;
-            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
-            std::fflush(stdout);
-            return move_t{};
+            return std::unexpected(insufficient_material);
         }
 
         if (position.is_50_moves_rule()) {
-            constexpr std::string_view info = "info string draw by 50 moves rule\n"sv;
-            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
-            std::fflush(stdout);
-            return move_t{};
+            return std::unexpected(rule50);
         }
 
         if (position.is_3_fold_repetition()) {
-            constexpr std::string_view info = "info string draw by 3-fold repetition\n"sv;
-            std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
-            std::fflush(stdout);
-            return move_t{};
+            return std::unexpected(repetition);
         }
 
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> move_buffer;
@@ -388,26 +377,13 @@ struct searcher_t {
 
         if (moves.empty()) {
             if (position.is_check()) {
-                constexpr std::string_view info = "info string checkmate\n"sv;
-                std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-                std::fwrite(none.data(), sizeof(char), none.size(), stdout);
-                std::fflush(stdout);
+                return std::unexpected(checkmate);
             } else {
-                constexpr std::string_view info = "info string stalemate\n"sv;
-                std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-                std::fwrite(none.data(), sizeof(char), none.size(), stdout);
-                std::fflush(stdout);
+                return std::unexpected(stalemate);
             }
-            return move_t{};
         }
 
         if (moves.size() == 1) {
-            // constexpr std::string_view info = "info string singular move\n"sv;
-            char buffer[20];
-            char* out = std::format_to(buffer, "bestmove {}\n", moves.front());
-            // std::fwrite(info.data(), sizeof(char), info.size(), stdout);
-            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
-            std::fflush(stdout);
             return moves.front();
         }
 
@@ -426,32 +402,51 @@ struct searcher_t {
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
 
+            char buffer[1024];
+
             if (result.score < -29000 || result.score > 29000) {
                 constexpr int MATE_SCORE = 30000;
                 int plies = MATE_SCORE - std::abs(result.score);
                 int mate_in = (plies + 1) / 2;
                 if (result.score < 0)
                     mate_in = -mate_in;
-                char buffer[1024];
                 char* out = std::format_to(buffer, "info depth {} seldepth {} score mate {:+} nodes {} nps {} hashfull {} time {} pv {}\n", 
                     iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
-                std::fflush(stdout);
             } else {
-                char buffer[1024];
                 char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
                     iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
-                std::fflush(stdout);
             }
+
+            std::fflush(stdout);
 
             history.age();
         }
 
-        char buffer[20];
-        char* out = std::format_to(buffer, "bestmove {}\n", best);
-        std::fwrite(buffer, sizeof(char), out - buffer, stdout);
-        std::fflush(stdout);
         return best;
+    }
+
+    std::expected<move_t, unexpected_e> operator()(int depth) {
+        constexpr static std::string_view unexpected_text[] = {
+            "draw by insufficient material"sv,
+            "draw by 50 moves rule"sv,
+            "draw by 3-fold repetition"sv,
+            "checkmate"sv,
+            "stalemate"sv
+        };
+        constexpr std::string_view none = "bestmove (none)\n"sv;
+        char buffer[100];
+        auto result = search(depth);
+        if (result) {
+            char* out = std::format_to(buffer, "bestmove {}\n", result.value());
+            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+        } else {
+            char* out = std::format_to(buffer, "info string {}\n", unexpected_text[result.error()]);
+            std::fwrite(buffer, sizeof(char), out - buffer, stdout);
+            std::fwrite(none.data(), sizeof(char), none.size(), stdout);
+        }
+        std::fflush(stdout);
+        return result;
     }
 };
