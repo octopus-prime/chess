@@ -216,6 +216,7 @@ private:
     std::span<move_t> generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types, std::span<const bitboard, TYPE_MAX> check_targets) const noexcept;
     void setup(std::string_view fen) noexcept;
     std::tuple<bitboard, bitboard> find_snipers_and_blockers(side_e side) const noexcept;
+    uint8_t find_repetitions(hash_t hash, uint8_t half_move) const noexcept;
 
     std::array<piece, SQUARE_MAX> board;
     std::array<bitboard, 7> occupied_by_type;
@@ -701,11 +702,20 @@ inline void position_t::make_move(move_t move) noexcept {
         st.blockers[s] = bl;
     }
 
-    // Repetition count (same as before; consider a hash->count map for speed)
-    st.repetition = 1 + std::ranges::count(states, st.hash, &state_t::hash);
+    st.repetition = 1 + find_repetitions(st.hash, st.half_move);
 
     // Commit new state
     states.push_back(st);
+}
+
+inline uint8_t position_t::find_repetitions(hash_t hash, uint8_t half_move) const noexcept {
+    int s = states.size();
+    int limit = std::max(0, s - 2 * half_move);
+    for (int i = s - 2; i >= limit; i -= 2) {
+        if (states[i].hash == hash)
+            return states[i].repetition;
+    }
+    return 0;
 }
 
 inline void position_t::undo_move(move_t move) noexcept {
@@ -860,7 +870,7 @@ inline void position_t::make_null_move() noexcept {
         new_state.blockers[side] = blockers;
     }
 
-    new_state.repetition = 1 + std::ranges::count(states, new_state.hash, &state_t::hash);
+    new_state.repetition = 1 + find_repetitions(new_state.hash, new_state.half_move);
 
     states.push_back(new_state);
 }
