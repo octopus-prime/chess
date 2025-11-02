@@ -241,11 +241,11 @@ std::tuple<bitboard, bitboard> position_t::find_snipers_and_blockers(side_e side
 
     square ksq = by(side, KING).front();
 
-    auto foo = [&](direction_e direction, bitboard candidates, std::function<square(bitboard)> find_nearest) {
+    auto scan = [&](direction_e direction, bitboard candidates, auto&& find_nearest) {
         bitboard ray = bitboards::ray(ksq, direction);
         bitboard sniper_candidates = ray & candidates;
         if (!sniper_candidates.empty()) {
-            square sniper = find_nearest(sniper_candidates);
+            square sniper = std::invoke(find_nearest, sniper_candidates);
             bitboard line = bitboards::line(ksq, sniper);
             bitboard between = line & by() & ~bitboard{ksq} & ~bitboard{sniper};
             bitboard blocker_candidates = between & by(side);
@@ -257,14 +257,14 @@ std::tuple<bitboard, bitboard> position_t::find_snipers_and_blockers(side_e side
         }
     };
 
-    foo(NORTH, by(~side, ROOK, QUEEN), &bitboard::front);
-    foo(SOUTH, by(~side, ROOK, QUEEN), &bitboard::back);
-    foo(EAST, by(~side, ROOK, QUEEN), &bitboard::front);
-    foo(WEST, by(~side, ROOK, QUEEN), &bitboard::back);
-    foo(NORTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::front);
-    foo(NORTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::front);
-    foo(SOUTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::back);
-    foo(SOUTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::back);
+    scan(NORTH, by(~side, ROOK, QUEEN), &bitboard::front);
+    scan(SOUTH, by(~side, ROOK, QUEEN), &bitboard::back);
+    scan(EAST, by(~side, ROOK, QUEEN), &bitboard::front);
+    scan(WEST, by(~side, ROOK, QUEEN), &bitboard::back);
+    scan(NORTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::front);
+    scan(NORTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::front);
+    scan(SOUTH_EAST, by(~side, BISHOP, QUEEN), &bitboard::back);
+    scan(SOUTH_WEST, by(~side, BISHOP, QUEEN), &bitboard::back);
 
     return {snipers, blockers};
 }
@@ -864,14 +864,7 @@ inline void position_t::make_null_move() noexcept {
     auto king_square = by(side, KING).front();
     new_state.checkers = attackers(king_square) & by(~side);
 
-    for (side_e side : {WHITE, BLACK}) {
-        auto [snipers, blockers] = find_snipers_and_blockers(side);
-        new_state.snipers[side] = snipers;
-        new_state.blockers[side] = blockers;
-    }
-
     new_state.repetition = 1 + find_repetitions(new_state.hash, new_state.half_move);
-
     states.push_back(new_state);
 }
 
