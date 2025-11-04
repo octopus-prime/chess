@@ -182,8 +182,9 @@ class transposition_t {
 
 public:
     // transposition_t() : buckets(1'000'037) {}
-    transposition_t() : buckets(250'007) {}
     // transposition_t() : buckets(499'999) {}
+    transposition_t() : buckets(250'007) {}
+    // transposition_t() : buckets(125'003) {}
 
     void clear() noexcept {
         std::ranges::fill(buckets, bucket_t{});
@@ -199,11 +200,20 @@ public:
 		*entry = {key, move, score, flag, depth};
     }
 
-    const entry_t* get(hash_t hash) const noexcept {
+    // const entry_t* get(hash_t hash) const noexcept {
+    //     const bucket_t& bucket = buckets[hash % buckets.size()];
+	// 	uint16_t key = static_cast<uint16_t>(hash);
+	// 	const entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);
+	// 	return entry != std::end(bucket.entries) ? entry : nullptr;
+    // }
+
+    std::optional<entry_t> get(hash_t hash) const noexcept {
         const bucket_t& bucket = buckets[hash % buckets.size()];
 		uint16_t key = static_cast<uint16_t>(hash);
 		const entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);
-		return entry != std::end(bucket.entries) ? entry : nullptr;
+		if (entry == std::end(bucket.entries))
+			return std::nullopt;
+		return *entry;
     }
 
     size_t full() const noexcept {

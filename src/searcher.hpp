@@ -169,8 +169,10 @@ struct searcher_t {
         }
 
         move_t best;
-        const entry_t* const entry = transposition.get(position.hash());
-        if (entry) {
+        // const entry_t* const entry = transposition.get(position.hash());
+        // const auto entry = transposition.get(position.hash());
+        // static_assert(sizeof(decltype(entry)) == 10);
+        if (const auto entry = transposition.get(position.hash())) {
             best = entry->move;
             if (entry->depth >= depth) {
                 switch (entry->flag) {
@@ -293,7 +295,7 @@ struct searcher_t {
                 pv.front() = move;
                 std::ranges::copy(result.pv, pv.begin() + 1);
                 length = result.pv.size() + 1;
-                history.put(best, height, depth);
+                // history.put(best, height, depth);
             } else {
                 // history.put(move, height, -depth);
             }

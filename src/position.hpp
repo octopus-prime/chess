@@ -94,7 +94,7 @@ struct position_t {
         return generate_moves(buffer, by(~side), promotion_targets, {QUEEN, KNIGHT}, check_targets);
     }
 
-    int16_t see(const move_t& move) const noexcept;
+    int16_t see(move_t move) const noexcept;
 
     position_t& operator=(std::string_view fen) noexcept {
         board.fill(NO_PIECE);
@@ -875,7 +875,7 @@ inline void position_t::undo_null_move() noexcept {
     states.pop_back();
 }
 
-inline int16_t position_t::see(const move_t& move) const noexcept {
+inline int16_t position_t::see(move_t move) const noexcept {
 
     auto find_least_piece = [this](bitboard board) -> square {
         for (type_e type : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING}) {

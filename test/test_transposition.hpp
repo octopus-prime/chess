@@ -20,8 +20,9 @@ void test_transposition() {
 
         transposition.put(hash, move, score, flag, depth);
 
-        const entry_t* entry = transposition.get(hash);
-        ut::expect(entry != nullptr);
+        // const entry_t* entry = transposition.get(hash);
+        auto entry = transposition.get(hash);
+        ut::expect(entry != std::nullopt);
         ut::expect(ut::eq(entry->key, static_cast<uint16_t>(hash)));
         ut::expect(entry->move == tt_move_t{move});
         ut::expect(ut::eq(entry->score, score));
@@ -30,6 +31,6 @@ void test_transposition() {
 
         transposition.clear();
         entry = transposition.get(hash);
-        ut::expect(entry == nullptr);
+        ut::expect(entry == std::nullopt);
     };
 }
