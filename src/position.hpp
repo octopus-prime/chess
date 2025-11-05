@@ -372,6 +372,48 @@ inline bitboard position_t::attackers(square square) const noexcept {
     return attackers;
 }
 
+inline size_t write_moves(std::span<move_t> buffer, uint32_t mask, __m512i moves) {
+   _mm512_mask_compressstoreu_epi16(buffer.data(), mask, moves);
+    return std::popcount(mask);
+}
+
+inline size_t splat_moves(std::span<move_t> buffer, square from, bitboard targets) {
+    constexpr square_e placeholder{0};
+    alignas(64) static constexpr auto table = [] {
+        std::array<move_t, 64> table{};
+        for (square to : bitboards::ALL)
+            table[to] = move_t{placeholder, to};
+        return table;
+    }();
+
+    const auto sources = _mm512_set1_epi16(move_t{from, placeholder});
+    const auto moves = span_cast<const __m512i>(std::span{table});
+
+    size_t index = 0;
+    index += write_moves(buffer.subspan(index), targets >> 0,  _mm512_or_si512(moves[0], sources));
+    index += write_moves(buffer.subspan(index), targets >> 32, _mm512_or_si512(moves[1], sources));
+    return index;
+}
+
+template<int offset>
+inline size_t splat_pawn_moves(std::span<move_t> buffer, bitboard targets) noexcept {
+    alignas(64) static constexpr auto table = [] {
+        std::array<move_t, 64> table{};
+        for (square to : bitboards::ALL) {
+            square_e from {(int8_t) std::clamp<int>(to + offset, 0, 63)};
+            table[to] = move_t{from, to};
+        }
+        return table;
+    }();
+
+    const auto moves = span_cast<const __m512i>(std::span{table});
+
+    size_t index = 0;
+    index += write_moves(buffer.subspan(index), targets >> 0,  moves[0]);
+    index += write_moves(buffer.subspan(index), targets >> 32, moves[1]);
+    return index;
+}
+
 inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types, std::span<const bitboard, TYPE_MAX> check_targets) const noexcept {
 
     size_t index = 0;
@@ -383,9 +425,10 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
 
     // std::println("attacked:\n{:b}", attacked);
 
-    for (square to_square : bitboards::king(ksq) & ~attacked & ~by(side) & valid_targets) {
-        buffer[index++] = {ksq, to_square};
-    }
+    // for (square to_square : bitboards::king(ksq) & ~attacked & ~by(side) & valid_targets) {
+    //     buffer[index++] = {ksq, to_square};
+    // }
+    index += splat_moves(buffer.subspan(index), ksq, bitboards::king(ksq) & ~attacked & ~by(side) & valid_targets);
 
     if (checkers.size() > 1) {
         return buffer.first(index);
@@ -433,75 +476,224 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
     valid_targets &= ~(by(side) | by(KING));
 
     for (square from_square : by(side, KNIGHT) & ~pinned) {
-        for (square to_square : bitboards::knight(from_square) & (valid_targets | check_targets[KNIGHT])) {
-            buffer[index++] = {from_square, to_square};
-        }
+        index += splat_moves(buffer.subspan(index), from_square, bitboards::knight(from_square) & (valid_targets | check_targets[KNIGHT]));
     }
 
     for (square from_square : by(side, ROOK, QUEEN)) {
-        for (square to_square : bitboards::rook_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]) {
-            buffer[index++] = {from_square, to_square};
-        }
+         index += splat_moves(buffer.subspan(index), from_square, bitboards::rook_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]);
     }
 
     for (square from_square : by(side, BISHOP, QUEEN)) {
-        for (square to_square : bitboards::bishop_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]) {
-            buffer[index++] = {from_square, to_square};
-        }
-    }   
+        index += splat_moves(buffer.subspan(index), from_square, bitboards::bishop_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]);
+    }
 
-    const auto generate_normal = [&](bitboard targets, int delta) {
-        for (square to : targets)
-            if (valid_for_pinned[to + delta] & bitboard{to})
-                buffer[index++] = {to + delta, to};
-    };
+    // const auto generate_normal = [&](bitboard targets, int delta) {
+    //     for (square to : targets)
+    //         if (valid_for_pinned[to + delta] & bitboard{to})
+    //             buffer[index++] = {to + delta, to};
+    // };
 
-    const auto generate_promotion = [&](bitboard targets, int delta) {
-        for (square to : targets)
-            if (valid_for_pinned[to + delta] & bitboard{to})
-                for (type_e type : promotion_types)
-                    buffer[index++] = {to + delta, to, type};
-    };
+    // const auto generate_promotion = [&](bitboard targets, int delta) {
+    //     for (square to : targets)
+    //         if (valid_for_pinned[to + delta] & bitboard{to})
+    //             for (type_e type : promotion_types)
+    //                 buffer[index++] = {to + delta, to, type};
+    // };
 
     bitboard pawns = by(side, PAWN);
+//     bitboard pawns1 = pawns & ~pinned;
+//     bitboard pawns2 = pawns & pinned;
 
+//     if (side == WHITE) {
+//         bitboard push = pawns1 << 8 & ~by();
+//         bitboard targets;
+
+//         targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<-8>(buffer.subspan(index), targets & ~"8"_r);
+//         // generate_normal(targets & ~"8"_r, -8);
+//         generate_promotion(targets & "8"_r, -8);
+
+//         targets = push << 8 & ~by() & "4"_r & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<-16>(buffer.subspan(index), targets);
+//         // generate_normal(targets, -16);
+
+//         targets = pawns1 << 7 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<-7>(buffer.subspan(index), targets & ~"8"_r);
+//         // generate_normal(targets & ~"8"_r, -7);
+//         generate_promotion(targets & "8"_r, -7);
+
+//         targets = pawns1 << 9 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<-9>(buffer.subspan(index), targets & ~"8"_r);
+//         // generate_normal(targets & ~"8"_r, -9);
+//         generate_promotion(targets & "8"_r, -9);
+
+//         // --
+//         push = pawns2 << 8 & ~by();
+
+//         targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"8"_r, -8);
+//         generate_promotion(targets & "8"_r, -8);
+
+//         targets = push << 8 & ~by() & "4"_r & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets, -16);
+
+//         targets = pawns2 << 7 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"8"_r, -7);
+//         generate_promotion(targets & "8"_r, -7);
+
+//         targets = pawns2 << 9 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"8"_r, -9);
+//         generate_promotion(targets & "8"_r, -9);
+//     } else {
+//         bitboard push = pawns1 >> 8 & ~by();
+//         bitboard targets;
+
+//         targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<+8>(buffer.subspan(index), targets & ~"1"_r);
+//         // generate_normal(targets & ~"1"_r, +8);
+//         generate_promotion(targets & "1"_r, +8);
+
+//         targets = push >> 8 & ~by() & "5"_r & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<+16>(buffer.subspan(index), targets);
+//         // generate_normal(targets, +16);
+
+//         targets = pawns1 >> 7 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<+7>(buffer.subspan(index), targets & ~"1"_r);
+//         // generate_normal(targets & ~"1"_r, +7);
+//         generate_promotion(targets & "1"_r, +7);
+
+//         targets = pawns1 >> 9 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         index += splat_pawn_moves<+9>(buffer.subspan(index), targets & ~"1"_r);
+//         // generate_normal(targets & ~"1"_r, +9);
+//         generate_promotion(targets & "1"_r, +9);
+
+// // --
+//         push = pawns2 >> 8 & ~by();
+
+//         targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"1"_r, +8);
+//         generate_promotion(targets & "1"_r, +8);
+
+//         targets = push >> 8 & ~by() & "5"_r & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets, +16);
+
+//         targets = pawns2 >> 7 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"1"_r, +7);
+//         generate_promotion(targets & "1"_r, +7);
+
+//         targets = pawns2 >> 9 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
+//         generate_normal(targets & ~"1"_r, +9);
+//         generate_promotion(targets & "1"_r, +9);
+//     }
+
+
+
+
+
+
+    // const bitboard pawns  = by(side, PAWN);
+    // const bitboard pinned = states.back().blockers[side];
+    const bitboard free_pawns   = pawns & ~pinned;
+    const bitboard pinned_pawns = pawns &  pinned;
+
+    const bitboard empty  = ~by();
+    const bitboard enemy  = by(~side);
+    const bitboard promoR = (side == WHITE) ? "8"_r : "1"_r;
+    const bitboard stepR  = (side == WHITE) ? "3"_r : "6"_r; // single-push landing rank for double push filter
+
+    // Helper for pinned pawns (few → cheap)
+    auto gen_pinned = [&](int delta, bitboard to_mask) {
+        for (square f : pinned_pawns) {
+            square t = static_cast<square_e>(static_cast<int>(f) + delta);
+            if (!(to_mask & bitboard{t})) continue;
+            if (!(valid_for_pinned[f] & bitboard{t})) continue;
+            if (promoR & bitboard{t}) {
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+            } else {
+                buffer[index++] = {f, t};
+            }
+        }
+    };
+
+    // Free pawns: splat non-promotions, scalar promotions
     if (side == WHITE) {
-        bitboard push = pawns << 8 & ~by();
-        bitboard targets;
+        bitboard one = (free_pawns << 8) & empty;
+        bitboard to  = one & (valid_targets | promotion_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<-8>(buffer.subspan(index), to & ~promoR);
+        for (square t : to & promoR) {
+            square f = t - 8;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
+        bitboard two = ((one & stepR) << 8) & empty & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<-16>(buffer.subspan(index), two);
 
-        targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"8"_r, -8);
-        generate_promotion(targets & "8"_r, -8);
+        bitboard lc = ((free_pawns << 7) & ~"h"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<-7>(buffer.subspan(index), lc & ~promoR);
+        for (square t : lc & promoR) {
+            square f = t - 7;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
 
-        targets = push << 8 & ~by() & "4"_r & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets, -16);
+        bitboard rc = ((free_pawns << 9) & ~"a"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<-9>(buffer.subspan(index), rc & ~promoR);
+        for (square t : rc & promoR) {
+            square f = t - 9;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
 
-        targets = pawns << 7 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"8"_r, -7);
-        generate_promotion(targets & "8"_r, -7);
+        // Pinned pawns (scalar, pin-safe)
+        bitboard p_one = ((pinned_pawns << 8) & empty) & (valid_targets | promotion_targets | check_targets[PAWN]);
+        gen_pinned(+8, p_one);
+        bitboard p_two = (((p_one & stepR) << 8) & empty) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(+16, p_two);
+        bitboard p_lc  = ((pinned_pawns << 7) & ~"h"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(+7, p_lc);
+        bitboard p_rc  = ((pinned_pawns << 9) & ~"a"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(+9, p_rc);
+    } else { // BLACK
+        bitboard one = (free_pawns >> 8) & empty;
+        bitboard to  = one & (valid_targets | promotion_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<+8>(buffer.subspan(index), to & ~promoR);
+        for (square t : to & promoR) {
+            square f = t + 8;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
+        bitboard two = ((one & stepR) >> 8) & empty & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<+16>(buffer.subspan(index), two);
 
-        targets = pawns << 9 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"8"_r, -9);
-        generate_promotion(targets & "8"_r, -9);
-    } else {
-        bitboard push = pawns >> 8 & ~by();
-        bitboard targets;
+        bitboard lc = ((free_pawns >> 7) & ~"a"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<+7>(buffer.subspan(index), lc & ~promoR);
+        for (square t : lc & promoR) {
+            square f = t + 7;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
 
-        targets = push & (valid_targets | promotion_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"1"_r, +8);
-        generate_promotion(targets & "1"_r, +8);
+        bitboard rc = ((free_pawns >> 9) & ~"h"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        index += splat_pawn_moves<+9>(buffer.subspan(index), rc & ~promoR);
+        for (square t : rc & promoR) {
+            square f = t + 9;
+            if (valid_for_pinned[f] & bitboard{t})
+                for (type_e pt : promotion_types) buffer[index++] = {f, t, pt};
+        }
 
-        targets = push >> 8 & ~by() & "5"_r & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets, +16);
-
-        targets = pawns >> 7 & ~"a"_f & by(~side) & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"1"_r, +7);
-        generate_promotion(targets & "1"_r, +7);
-
-        targets = pawns >> 9 & ~"h"_f & by(~side) & (valid_targets | check_targets[PAWN]);
-        generate_normal(targets & ~"1"_r, +9);
-        generate_promotion(targets & "1"_r, +9);
+        // Pinned pawns (scalar, pin-safe)
+        bitboard p_one = ((pinned_pawns >> 8) & empty) & (valid_targets | promotion_targets | check_targets[PAWN]);
+        gen_pinned(-8, p_one);
+        bitboard p_two = (((p_one & stepR) >> 8) & empty) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(-16, p_two);
+        bitboard p_lc  = ((pinned_pawns >> 7) & ~"a"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(-7, p_lc);
+        bitboard p_rc  = ((pinned_pawns >> 9) & ~"h"_f & enemy) & (valid_targets | check_targets[PAWN]);
+        gen_pinned(-9, p_rc);
     }
+
+
+
 
     for (square from : pawns & bitboards::pawn(en_passant & (valid_targets | valid_en_passant), ~side)) {
         if (valid_for_pinned[from] & en_passant) {

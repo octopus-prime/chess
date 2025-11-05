@@ -134,32 +134,32 @@ enum flag_t : std::uint8_t {
 	//		EGTB
 };
 
-struct tt_move_t {
-	uint16_t from : 6;
-	uint16_t to : 6;
-	uint16_t promotion : 4;
+// struct tt_move_t {
+// 	uint16_t from : 6;
+// 	uint16_t to : 6;
+// 	uint16_t promotion : 4;
 
-	constexpr tt_move_t() noexcept : from{0}, to{0}, promotion{0} {
-	}
+// 	constexpr tt_move_t() noexcept : from{0}, to{0}, promotion{0} {
+// 	}
 
-	constexpr tt_move_t(square from, square to, type_e promotion = NO_TYPE) noexcept
-		: from{static_cast<uint16_t>(from)}, to{static_cast<uint16_t>(to)}, promotion{static_cast<uint16_t>(promotion)} {
-	}
+// 	constexpr tt_move_t(square from, square to, type_e promotion = NO_TYPE) noexcept
+// 		: from{static_cast<uint16_t>(from)}, to{static_cast<uint16_t>(to)}, promotion{static_cast<uint16_t>(promotion)} {
+// 	}
 
-	constexpr tt_move_t(move_t move) noexcept
-		: from{static_cast<uint16_t>(move.from())}, to{static_cast<uint16_t>(move.to())}, promotion{static_cast<uint16_t>(move.promotion())} {
-	}
+// 	constexpr tt_move_t(move_t move) noexcept
+// 		: from{static_cast<uint16_t>(move.from())}, to{static_cast<uint16_t>(move.to())}, promotion{static_cast<uint16_t>(move.promotion())} {
+// 	}
 
-	constexpr operator move_t() const noexcept {
-		return move_t{static_cast<square_e>(from), static_cast<square_e>(to), static_cast<type_e>(promotion)};
-	}
+// 	constexpr operator move_t() const noexcept {
+// 		return move_t{static_cast<square_e>(from), static_cast<square_e>(to), static_cast<type_e>(promotion)};
+// 	}
 
-	constexpr bool operator==(const tt_move_t& other) const noexcept = default;
-};
+// 	constexpr bool operator==(const tt_move_t& other) const noexcept = default;
+// };
 
 struct entry_t {
 	uint16_t key;	//2
-	tt_move_t move;	//2
+	move_t move;	//2
 	int16_t score;	//2
 	flag_t flag;	//1
 	uint8_t	depth;	//1

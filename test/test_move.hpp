@@ -3,7 +3,7 @@
 #include <move.hpp>
 #include "ut.hpp"
 
-static_assert(sizeof(move_t) == 3);
+static_assert(sizeof(move_t) == 2);
 static_assert("e2e4"_m.from() == E2);
 static_assert("e2e4"_m.to() == E4);
 static_assert("e7e8q"_m.promotion() == QUEEN);

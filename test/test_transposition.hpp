@@ -24,7 +24,7 @@ void test_transposition() {
         auto entry = transposition.get(hash);
         ut::expect(entry != std::nullopt);
         ut::expect(ut::eq(entry->key, static_cast<uint16_t>(hash)));
-        ut::expect(entry->move == tt_move_t{move});
+        ut::expect(entry->move == move);
         ut::expect(ut::eq(entry->score, score));
         ut::expect(ut::eq(entry->flag, flag));
         ut::expect(ut::eq(entry->depth, depth));

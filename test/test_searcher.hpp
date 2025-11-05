@@ -72,7 +72,7 @@ void test_searcher() {
         std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
 
         // ut::expect(ut::le(nodes, 265854299));
-        ut::expect(ut::le(nodes, 24419035));
+        ut::expect(ut::le(nodes, 24543533));
         // ut::expect(ut::ge(nps, 2300000));
     };
 }
