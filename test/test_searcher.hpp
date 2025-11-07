@@ -13,7 +13,7 @@ void test_searcher() {
         history_t history{position};
         evaluator evaluator{};
         searcher_t searcher{position, transposition, history, evaluator, []() { return false; }};
-        int depth = 9;
+        int depth = 10;
 
         size_t nodes = 0;
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -65,15 +65,33 @@ void test_searcher() {
         ut::expect(searcher(depth) == "f6g4"_m);
         nodes += searcher.stats.nodes;
 
+        searcher.clear();
+        position = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv;
+        ut::expect(searcher(depth) == "e2a6"_m);
+        nodes += searcher.stats.nodes;
+
+        searcher.clear();
+        position = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -"sv;
+        ut::expect(searcher(depth) == "c4c5"_m);
+        nodes += searcher.stats.nodes;
+
+        searcher.clear();
+        position = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -"sv;
+        ut::expect(searcher(depth) == "d7c8q"_m);
+        nodes += searcher.stats.nodes;
+
+        searcher.clear();
+        position = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -"sv;
+        ut::expect(searcher(depth) == "c3d5"_m);
+        nodes += searcher.stats.nodes;
+
         auto t1 = std::chrono::high_resolution_clock::now();
         auto time = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
         auto nps = size_t(nodes / (time / 1000.0));
 
         std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
 
-        // ut::expect(ut::le(nodes, 265854299));
-        // ut::expect(ut::le(nodes, 24543533));
-        ut::expect(ut::le(nodes, 24945396));
-        // ut::expect(ut::ge(nps, 2300000));
+        ut::expect(ut::lt(nodes, 36000000));
+        ut::expect(ut::gt(nps, 2200000));
     };
 }

@@ -158,9 +158,9 @@ struct searcher_t {
             return {position.is_check() ? -30000 + height : 0, {}};
         }
 
-        // if (depth == 0 && (position.is_check()/* || moves.size() == 1 */)) {
-        //     depth++;
-        // }
+        if (depth == 0 && position.is_check()) {
+            depth++;
+        }
 
         if (depth == 0) {
             stats.nodes--;
@@ -201,8 +201,8 @@ struct searcher_t {
 
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        const int R = 1 + depth / 3;
-        if (depth > 4 && moves.size() > 8 && position.can_null_move()) {
+        if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
+            int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
@@ -215,7 +215,7 @@ struct searcher_t {
         }
         
         if (best == move_t{} && depth > 4) {
-            auto pv = (*this)(alpha, beta, height, depth - R, pv_buffer).pv;
+            auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
                 best = pv.front();
             }
@@ -262,15 +262,13 @@ struct searcher_t {
             bool move_check = position.is_check();
             result_t result;
             if (pv_found) {
-                // bool reduced = (phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES) && eval.history == 0;
-                bool reduced = eval.see <= 0 && eval.history == 0;
-                if (depth > 4 && !position_check && !move_check && reduced) {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1 - R, pv_buffer);
+                if (depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
+                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
                 } else {
                     result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
                 }
                 if (result.score >= alpha && result.score < beta) {
-                    result = -(*this)(-beta, -result.score, height + 1, depth - 1, pv_buffer);
+                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 }
             } else {
                 result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
