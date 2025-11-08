@@ -179,6 +179,7 @@ class transposition_t {
 	static_assert(sizeof(bucket_t) == 64);
 
     std::vector<bucket_t> buckets;
+	std::size_t used{0};
 
 public:
     // transposition_t() : buckets(1'000'037) {}
@@ -188,6 +189,7 @@ public:
 
     void clear() noexcept {
         std::ranges::fill(buckets, bucket_t{});
+		used = 0;
     }
 
     void put(hash_t hash, move_t move, int16_t score, flag_t flag, uint8_t depth) noexcept {
@@ -196,6 +198,7 @@ public:
 		entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);
 		if (entry == std::end(bucket.entries)) {
 			entry = std::ranges::min_element(bucket.entries, {}, &entry_t::depth);
+			used += entry->flag == UNKNOWN;
 		}
 		*entry = {key, move, score, flag, depth};
     }
@@ -217,9 +220,6 @@ public:
     }
 
     size_t full() const noexcept {
-		size_t count = std::ranges::fold_left(buckets, 0ull, [](size_t acc, const bucket_t& bucket) {
-			return acc + std::ranges::count(bucket.entries, UNKNOWN, &entry_t::flag);
-		});
-        return 1000.0 - 1000.0 * count / (buckets.size() * BUCKET_SIZE);
+		return 1000.0 * used / (buckets.size() * BUCKET_SIZE);
     }
 };
