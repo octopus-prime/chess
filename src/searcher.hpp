@@ -213,7 +213,57 @@ struct searcher_t {
                 }
             }
         }
+
+        // if (depth >= 8 && !position.is_check()) {
+        //     result_t result = (*this)(alpha, beta, height, depth - 4, pv_buffer);
+        //     if (result.score > beta + 200) {
+        //             return {beta, {}};
+        //     }
+        //     if (result.score < alpha - 200) {
+        //         return {alpha, {}};
+        //     }
+        // }
         
+        // ProbCut parameters (tune!)
+        constexpr int MIN_PROBCUT_DEPTH = 7;
+        constexpr int PROBCUT_REDUCTION = 4;
+        static const int probcut_margin[32] = {
+            /*0..6*/ 0,0,0,0,0,0,0,
+            /*7*/ 120, /*8*/ 140, /*9*/ 160, /*10*/ 180,
+            /*11*/ 200, /*12*/ 220, /*13*/ 240, /*14*/ 260,
+            /*15*/ 280, /*16*/ 300, /*>*/ 320,320,320,320,320,320,320,320,320,320,320,320
+        };
+
+        bool pv_node = (beta - alpha > 1);
+        if (!pv_node
+            && depth >= MIN_PROBCUT_DEPTH
+            && !position.is_check()
+            && depth - PROBCUT_REDUCTION > 0) {
+
+            int margin = probcut_margin[std::min(depth, 31)] / 5;
+            std::array<move_t, position_t::MAX_MOVES_PER_GAME> pc_pv;
+
+            // High-side probe (fail-high test)
+            {
+                int pc_alpha = beta;
+                int pc_beta  = beta + 1;
+                result_t r = (*this)(pc_alpha, pc_beta, height, depth - PROBCUT_REDUCTION, pc_pv);
+                if (r.score >= beta + margin) {
+                    return {beta, {}};
+                }
+            }
+
+            // Low-side probe (optional; can skip if you only want high cut)
+            {
+                int pc_alpha = alpha - 1;
+                int pc_beta  = alpha;
+                result_t r = (*this)(pc_alpha, pc_beta, height, depth - PROBCUT_REDUCTION, pc_pv);
+                if (r.score <= alpha - margin) {
+                    return {alpha, {}};
+                }
+            }
+        }
+
         if (best == move_t{} && depth > 4) {
             auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
