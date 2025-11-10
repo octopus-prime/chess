@@ -91,8 +91,8 @@ void test_searcher() {
 
         std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
 
-        ut::expect(ut::lt(nodes, 36000000));
-        // ut::expect(ut::lt(time, 16000));
+        ut::expect(ut::lt(nodes, 19000000));
+        // ut::expect(ut::lt(time, 8600));
         // ut::expect(ut::gt(nps, 2200000));
     };
 }
