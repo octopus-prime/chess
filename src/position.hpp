@@ -354,8 +354,7 @@ inline void position_t::setup(std::string_view fen) noexcept {
 
 inline bitboard position_t::attackers(side_e side) const noexcept {
     bitboard attackers = 0ull;
-    attackers |= bitboards::king(by(side, KING));
-    attackers |= bitboards::knight(by(side, KNIGHT));
+    attackers |= bitboards::leaper(by(side, KING), by(side, KNIGHT));
     attackers |= bitboards::slider(by(side, ROOK, QUEEN), by(side, BISHOP, QUEEN), by() & ~by(~side, KING));
     attackers |= bitboards::pawn(by(side, PAWN), side);
     return attackers;
