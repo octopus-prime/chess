@@ -267,6 +267,14 @@ const bitboards::slider_lookup_t bitboards::lookup_rook_queen = []() noexcept {
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard rooks = rook_queen(board, 0ull);
+    if (sq.rank() > rank_e::R1)
+      rooks &= ~"1"_r;
+    if (sq.rank() < rank_e::R8)
+      rooks &= ~"8"_r;
+    if (sq.file() > file_e::FA)
+      rooks &= ~"a"_f;
+    if (sq.file() < file_e::FH)
+      rooks &= ~"h"_f;
     auto size = 1ull << rooks.size();
     blocks[sq].data.resize(size);
     for (std::uint64_t index = 0; index < size; ++index) {
@@ -283,6 +291,14 @@ const bitboards::slider_lookup_t bitboards::lookup_bishop_queen = []() noexcept 
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard bishops = bishop_queen(board, 0ull);
+    if (sq.rank() > rank_e::R1)
+      bishops &= ~"1"_r;
+    if (sq.rank() < rank_e::R8)
+      bishops &= ~"8"_r;
+    if (sq.file() > file_e::FA)
+      bishops &= ~"a"_f;
+    if (sq.file() < file_e::FH)
+      bishops &= ~"h"_f;
     auto size = 1ull << bishops.size();
     blocks[sq].data.resize(size);
     for (std::uint64_t index = 0; index < size; ++index) {
