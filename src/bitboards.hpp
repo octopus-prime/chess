@@ -16,25 +16,29 @@ enum direction_e : int8_t {
 
 constexpr size_t DIRECTION_MAX = 8;
 
-class bitboards
-{
+class bitboards {
+  template <size_t MAX>
+  struct slider_lookup_t;
+
   using dualboard = __v2du;
   using quadboard = __v4du;
   using octoboard = __v8du;
   using leaper_lookup_t = std::array<bitboard, SQUARE_MAX>;
   using line_lookup_t = std::array<leaper_lookup_t, SQUARE_MAX>;
   using ray_lookup_t = std::array<std::array<bitboard, DIRECTION_MAX>, SQUARE_MAX>;
-  struct slider_lookup_t;
+  using slider_lookup_rook_queen_t = slider_lookup_t<102400>;
+  using slider_lookup_bishop_queen_t = slider_lookup_t<5248>;
 
   static const line_lookup_t lookup_line;
   static const ray_lookup_t lookup_ray;
   static const leaper_lookup_t lookup_king;
   static const leaper_lookup_t lookup_knight;
   static const std::array<leaper_lookup_t, 2> lookup_pawn;
-  static const slider_lookup_t lookup_rook_queen;
-  static const slider_lookup_t lookup_bishop_queen;
+  static const slider_lookup_rook_queen_t lookup_rook_queen;
+  static const slider_lookup_bishop_queen_t lookup_bishop_queen;
 
   static quadboard expand(quadboard in, quadboard empty) noexcept;
+  static bitboard relevant_occupancy(square square, bitboard occupied) noexcept;
 
 public:
   static constexpr bitboard ALL = ~0ull;
@@ -58,22 +62,22 @@ public:
   static bitboard pawn(bitboard squares, side_e side) noexcept;
 };
 
-struct bitboards::slider_lookup_t
-{
-  struct block_t
-  {
+template <size_t MAX>
+struct bitboards::slider_lookup_t {
+  struct meta_t {
     bitboard mask;
-    std::vector<bitboard> data;
+    std::uint32_t offset;
+
+    std::uint32_t operator[](bitboard occupied) const noexcept {
+      return offset + _pext_u64(occupied, mask);
+    }
   };
 
-  std::array<block_t, 64> blocks;
+  std::array<meta_t, SQUARE_MAX> meta{};
+  std::array<bitboard, MAX> data{};
 
-  bitboard
-  operator()(square square, bitboard occupied) const noexcept
-  {
-    const auto &block = blocks[square];
-    const auto index = _pext_u64(occupied, block.mask);
-    return block.data[index];
+  bitboard operator()(square square, bitboard occupied) const noexcept {
+    return data[meta[square][occupied]];
   }
 };
 
@@ -212,52 +216,52 @@ const std::array<bitboards::leaper_lookup_t, 2> bitboards::lookup_pawn = []() no
   return lookup;
 }();
 
-const bitboards::slider_lookup_t bitboards::lookup_rook_queen = []() noexcept {
-  std::array<slider_lookup_t::block_t, 64> blocks {};
+inline bitboard bitboards::relevant_occupancy(square square, bitboard occupied) noexcept {
+  if (square.rank() > rank_e::R1)
+    occupied &= ~"1"_r;
+  if (square.rank() < rank_e::R8)
+    occupied &= ~"8"_r;
+  if (square.file() > file_e::FA)
+    occupied &= ~"a"_f;
+  if (square.file() < file_e::FH)
+    occupied &= ~"h"_f;
+  return occupied;
+}
+
+const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() noexcept {
+  slider_lookup_rook_queen_t lookup{};
+  std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard rooks = slider(board, 0ull, 0ull);
-    if (sq.rank() > rank_e::R1)
-      rooks &= ~"1"_r;
-    if (sq.rank() < rank_e::R8)
-      rooks &= ~"8"_r;
-    if (sq.file() > file_e::FA)
-      rooks &= ~"a"_f;
-    if (sq.file() < file_e::FH)
-      rooks &= ~"h"_f;
-    auto size = 1ull << rooks.size();
-    blocks[sq].data.resize(size);
-    for (std::uint64_t index = 0; index < size; ++index) {
+    rooks = relevant_occupancy(sq, rooks);
+    std::uint32_t size = 1u << rooks.size();
+    lookup.meta[sq] = {rooks, offset};
+    for (std::uint32_t index = 0; index < size; ++index) {
       bitboard blockers = _pdep_u64(index, rooks);
-      blocks[sq].data[index] = slider(board, 0ull, blockers);
+      lookup.data[offset + index] = slider(board, 0ull, blockers);
     }
-    blocks[sq].mask = rooks;
+    offset += size;
   }
-  return slider_lookup_t{blocks};
+  return lookup;
 }();
 
-const bitboards::slider_lookup_t bitboards::lookup_bishop_queen = []() noexcept {
-  std::array<slider_lookup_t::block_t, 64> blocks {};
+const bitboards::slider_lookup_bishop_queen_t bitboards::lookup_bishop_queen = []() noexcept {
+  slider_lookup_bishop_queen_t lookup{};
+  std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard bishops = slider(0ull, board, 0ull);
-    if (sq.rank() > rank_e::R1)
-      bishops &= ~"1"_r;
-    if (sq.rank() < rank_e::R8)
-      bishops &= ~"8"_r;
-    if (sq.file() > file_e::FA)
-      bishops &= ~"a"_f;
-    if (sq.file() < file_e::FH)
-      bishops &= ~"h"_f;
-    auto size = 1ull << bishops.size();
-    blocks[sq].data.resize(size);
-    for (std::uint64_t index = 0; index < size; ++index) {
+    bishops = relevant_occupancy(sq, bishops);
+    std::uint32_t size = 1u << bishops.size();
+    lookup.meta[sq] = {bishops, offset};
+    for (std::uint32_t index = 0; index < size; ++index) {
       bitboard blockers = _pdep_u64(index, bishops);
-      blocks[sq].data[index] = slider(0ull, board, blockers);
+      lookup.data[offset + index] = slider(0ull, board, blockers);
     }
-    blocks[sq].mask = bishops;
+    offset += size;
   }
-  return slider_lookup_t{blocks};
+  return lookup;
 }();
 
 const bitboards::line_lookup_t bitboards::lookup_line = []() noexcept {
@@ -294,33 +298,14 @@ const bitboards::ray_lookup_t bitboards::lookup_ray = []() noexcept {
     bitboard bb7 = t[2];
     bitboard bb9 = t[3];
 
-    for (square to : bb1) {
-      if (to > from)
-        lookup[from][EAST].set(to);
-      else
-        lookup[from][WEST].set(to);
-    }
-
-    for (square to : bb8) {
-      if (to > from)
-        lookup[from][NORTH].set(to);
-      else
-        lookup[from][SOUTH].set(to);
-    }
-
-    for (square to : bb7) {
-      if (to > from)
-        lookup[from][NORTH_WEST].set(to);
-      else
-        lookup[from][SOUTH_EAST].set(to);
-    }
-
-    for (square to : bb9) {
-      if (to > from)
-        lookup[from][NORTH_EAST].set(to);
-      else
-        lookup[from][SOUTH_WEST].set(to);
-    }
+    for (square to : bb1)
+      lookup[from][to > from ? EAST : WEST].set(to);
+    for (square to : bb8)
+      lookup[from][to > from ? NORTH : SOUTH].set(to);
+    for (square to : bb7)
+      lookup[from][to > from ? NORTH_WEST : SOUTH_EAST].set(to);
+    for (square to : bb9)
+      lookup[from][to > from ? NORTH_EAST : SOUTH_WEST].set(to);
   }
 
   return lookup;
