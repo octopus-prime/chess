@@ -66,10 +66,14 @@ template <size_t MAX>
 struct bitboards::slider_lookup_t {
   struct meta_t {
     bitboard mask;
+    std::uint64_t magic;
     std::uint32_t offset;
+    std::uint8_t shift;
 
     std::uint32_t operator[](bitboard occupied) const noexcept {
-      return offset + _pext_u64(occupied, mask);
+      const auto occ = static_cast<std::uint64_t>(occupied & mask);
+      const auto index = (occ * magic) >> shift;
+      return offset + static_cast<std::uint32_t>(index);
     }
   };
 
@@ -231,17 +235,58 @@ inline bitboard bitboards::relevant_occupancy(square square, bitboard occupied) 
 const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() noexcept {
   slider_lookup_rook_queen_t lookup{};
   std::uint32_t offset = 0;
+  auto random_u64 = []() noexcept {
+    static std::uint64_t x = 0x9e3779b97f4a7c15ull;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    return x;
+  };
+
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard rooks = slider(board, 0ull, 0ull);
     rooks = relevant_occupancy(sq, rooks);
-    std::uint32_t size = 1u << rooks.size();
-    lookup.meta[sq] = {rooks, offset};
-    for (std::uint32_t index = 0; index < size; ++index) {
-      bitboard blockers = _pdep_u64(index, rooks);
-      lookup.data[offset + index] = slider(board, 0ull, blockers);
+    const auto bits = static_cast<std::uint32_t>(rooks.size());
+    const std::uint32_t size = 1u << bits;
+
+    // squares with no relevant occupancy (edge cases)
+    if (bits == 0) {
+      lookup.meta[sq] = {rooks, 0ull, offset, 64};
+      lookup.data[offset] = slider(board, 0ull, 0ull);
+      offset += 1;
+      continue;
     }
-    offset += size;
+
+    // search for a collision-free magic
+    while (true) {
+      const std::uint64_t magic = random_u64() & random_u64() & random_u64();
+      std::vector<bitboard> table(size);
+      std::vector<bool> used(size, false);
+      bool failed = false;
+
+      for (std::uint32_t index = 0; index < size; ++index) {
+        bitboard blockers = _pdep_u64(index, rooks);
+        const auto occ = static_cast<std::uint64_t>(blockers);
+        const auto key = static_cast<std::uint32_t>((occ * magic) >> (64u - bits));
+        const bitboard attack = slider(board, 0ull, blockers);
+
+        if (!used[key]) {
+          used[key] = true;
+          table[key] = attack;
+        } else if (table[key] != attack) {
+          failed = true;
+          break;
+        }
+      }
+
+      if (!failed) {
+        lookup.meta[sq] = {rooks, magic, offset, static_cast<std::uint8_t>(64u - bits)};
+        std::copy(table.begin(), table.end(), lookup.data.begin() + offset);
+        offset += size;
+        break;
+      }
+    }
   }
   return lookup;
 }();
@@ -249,17 +294,56 @@ const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() 
 const bitboards::slider_lookup_bishop_queen_t bitboards::lookup_bishop_queen = []() noexcept {
   slider_lookup_bishop_queen_t lookup{};
   std::uint32_t offset = 0;
+  auto random_u64 = []() noexcept {
+    static std::uint64_t x = 0x7f4a7c159e3779b9ull;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    return x;
+  };
+
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard bishops = slider(0ull, board, 0ull);
     bishops = relevant_occupancy(sq, bishops);
-    std::uint32_t size = 1u << bishops.size();
-    lookup.meta[sq] = {bishops, offset};
-    for (std::uint32_t index = 0; index < size; ++index) {
-      bitboard blockers = _pdep_u64(index, bishops);
-      lookup.data[offset + index] = slider(0ull, board, blockers);
+    const auto bits = static_cast<std::uint32_t>(bishops.size());
+    const std::uint32_t size = 1u << bits;
+
+    if (bits == 0) {
+      lookup.meta[sq] = {bishops, 0ull, offset, 64};
+      lookup.data[offset] = slider(0ull, board, 0ull);
+      offset += 1;
+      continue;
     }
-    offset += size;
+
+    while (true) {
+      const std::uint64_t magic = random_u64() & random_u64() & random_u64();
+      std::vector<bitboard> table(size);
+      std::vector<bool> used(size, false);
+      bool failed = false;
+
+      for (std::uint32_t index = 0; index < size; ++index) {
+        bitboard blockers = _pdep_u64(index, bishops);
+        const auto occ = static_cast<std::uint64_t>(blockers);
+        const auto key = static_cast<std::uint32_t>((occ * magic) >> (64u - bits));
+        const bitboard attack = slider(0ull, board, blockers);
+
+        if (!used[key]) {
+          used[key] = true;
+          table[key] = attack;
+        } else if (table[key] != attack) {
+          failed = true;
+          break;
+        }
+      }
+
+      if (!failed) {
+        lookup.meta[sq] = {bishops, magic, offset, static_cast<std::uint8_t>(64u - bits)};
+        std::copy(table.begin(), table.end(), lookup.data.begin() + offset);
+        offset += size;
+        break;
+      }
+    }
   }
   return lookup;
 }();
