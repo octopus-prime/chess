@@ -32,19 +32,19 @@ struct move_picker_t {
             std::span{evals}.subspan(offset)
         );
 
-        auto get_move = [](const auto& t) -> move_t {
+        auto get_move = [](auto&& t) -> move_t {
             return std::get<0>(t);
         };
 
-        auto get_eval = [](const auto& t) -> eval_t {
-            return std::get<1>(t);
-        };
+        // auto get_eval = [](auto&& t) -> eval_t {
+        //     return std::get<1>(t);
+        // };
 
-        auto get_see = [](const auto& t) -> int16_t {
+        auto get_see = [](auto&& t) -> int16_t {
             return std::get<1>(t).see;
         };
 
-        auto get_history = [](const auto& t) -> uint16_t {
+        auto get_history = [](auto&& t) -> uint16_t {
             return std::get<1>(t).history;
         };
 
@@ -70,8 +70,9 @@ struct move_picker_t {
                 for (auto&& [move, eval] : remaining_zip) { eval.see = eval_see(move); }
                 auto tail = std::ranges::partition(remaining_zip, [](int16_t see) { return see > 0; }, get_see);
                 auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
-                for (auto&& [move, eval] : result) { eval.history = eval_history(move); }
-                std::ranges::sort(result, std::greater<>{}, get_eval);
+                // for (auto&& [move, eval] : result) { eval.history = eval_history(move); }
+                // std::ranges::sort(result, std::greater<>{}, get_eval);
+                std::ranges::sort(result, std::greater<>{}, get_see);
                 offset += std::distance(remaining_zip.begin(), tail.begin());
                 return result;
             }

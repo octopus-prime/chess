@@ -125,6 +125,7 @@
 
 #include "hashes.hpp"
 #include "move.hpp"
+#include "score.hpp"
 
 enum flag_t : std::uint8_t {
 	UNKNOWN,
@@ -160,7 +161,7 @@ enum flag_t : std::uint8_t {
 struct entry_t {
 	uint16_t key;	//2
 	move_t move;	//2
-	int16_t score;	//2
+	score_t score;	//2
 	flag_t flag;	//1
 	uint8_t	depth;	//1
 };

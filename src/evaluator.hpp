@@ -2,7 +2,7 @@
 
 #include "nnue/nnue.hpp"
 #include "position.hpp"
-#include <print>
+#include "score.hpp"
 
 class evaluator {
     template <typename NNUE>
@@ -50,7 +50,7 @@ class evaluator {
             }
         }
 
-        std::int32_t evaluate(const position_t& position) const noexcept {
+        score_t evaluate(const position_t& position) const noexcept {
             const Entry& t = refresh(position, position.get_side());
             const Entry& o = refresh(position, ~position.get_side());
             return nnue.evaluate(t, o, position.by().size());
@@ -64,11 +64,11 @@ public:
     evaluator() : small{}, big{} {
     }
 
-    std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {
-        constexpr int threshold = 150;
-        int score = small.evaluate(position);
-        int lower = alpha - threshold;
-        int upper = beta + threshold;
+    score_t evaluate(const position_t& position, score_t alpha, score_t beta) const noexcept {
+        constexpr score_t threshold = 150;
+        score_t score = small.evaluate(position);
+        score_t lower = alpha - threshold;
+        score_t upper = beta + threshold;
         if (lower < score && score < upper) {
             score = big.evaluate(position);
         }

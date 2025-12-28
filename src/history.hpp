@@ -63,7 +63,7 @@ struct history_t {
         std::ranges::for_each(continuation_low_ply_history, age_continuation);
     }
 
-    void put(move_t move, int height, int16_t value) noexcept {
+    void put(move_t move, uint16_t height, uint16_t value) noexcept {
         move_t last_move = position.last_move();
         square_e from = move.from();
         square_e to = move.to();
@@ -87,7 +87,7 @@ struct history_t {
         }
     }
 
-    uint16_t get(move_t move, int height) const noexcept {
+    uint16_t get(move_t move, uint16_t height) const noexcept {
         move_t last_move = position.last_move();
         square_e from = move.from();
         square_e to = move.to();
