@@ -10,18 +10,23 @@
 
 struct searcher_t {
 
+    template <typename T>
+    using qbuffer_t = std::array<T, position_t::MAX_ACTIVE_MOVES_PER_PLY>;
+
+    template <typename T>
+    using fbuffer_t = std::array<T, position_t::MAX_MOVES_PER_PLY>;
+
     struct statistics_t {
         size_t nodes = 0;
-        // size_t qnodes = 0;
-        size_t max_height = 0;
+        uint16_t max_height = 0;
     };
 
     struct result_t {
-        std::int32_t score;
+        score_t score;
         std::span<move_t> pv;
 
         result_t operator-() const noexcept {
-            return {-score, pv};
+            return {static_cast<score_t>(-score), pv};
         }
     };
 
@@ -32,146 +37,93 @@ struct searcher_t {
     evaluator& evaluator;
     std::function<bool()> should_stop;
     statistics_t stats;
-    // std::atomic<bool> should_stop_flag{false};
 
     void clear() noexcept {
         transposition.clear();
         history.clear();
         stats.nodes = 0;
         stats.max_height = 0;
-        // should_stop_flag = false;
     }
 
-    // void request_stop() noexcept {
-    //     should_stop_flag = true;
-    // }
-
-    // bool should_stop() const noexcept {
-    //     return should_stop_flag.load();
-    // }
-
-    int operator()(int alpha, int beta, int height) noexcept {
+    score_t qsearch(score_t alpha, score_t beta, uint16_t height) noexcept {
         stats.nodes++;
-        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
+        stats.max_height = std::max(stats.max_height, height);
 
-        // if (position.is_check()) {
-        //     stats.nodes--;
-        //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-        //     return (*this)(alpha, beta, height, 0, pv_buffer).score;
-        // }
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
+            return DRAW;
 
-        // if (position.is_no_material()) {
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition()) {
-            return 0;
-        }
+        score_t stand_pat = evaluator.evaluate(position, alpha, beta);
 
-        // side_e side = position.get_side();
-
-        // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        // int stand_pat = position.get_material() + evaluator.evaluate(position) / 8;
-        // int stand_pat = evaluator.evaluate(position);
-        int stand_pat = evaluator.evaluate(position, alpha, beta);
-        // if (std::abs(stand_pat - alpha) < 50 || std::abs(stand_pat - beta) < 50) {
-        //     stand_pat = evaluator.evaluate(position);
-        // }
-
-        // // Prevent Q-search explosion
-        // if (q_depth > 6) {
-        //     return stand_pat;
-        // }
-
-        if (stand_pat >= beta) {
+        if (stand_pat >= beta)
             return beta;
-        }
-        if (stand_pat > alpha) {
+        if (stand_pat > alpha)
             alpha = stand_pat;
-        }
 
-        std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_active_moves(buffer);
+        qbuffer_t<move_t> buffer;
+        qbuffer_t<score_t> gains;
 
-        std::array<int16_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
-            return position.see(move);
-        });
-
+        auto moves = position.generate_active_moves(buffer);
         auto zip = std::views::zip(moves, gains);
+        for (auto&& [move, gain] : zip) 
+            gain = position.see(move);
 
-        // auto tail = std::ranges::partition(zip, [&](const auto& pair) {
-        //     return std::get<1>(pair) >= 0;  // Keep only non-negative gains
-        // });
+        constexpr auto get_gain = [](auto&& t) -> score_t {
+            return std::get<1>(t);
+        };
+        const auto is_gainful = [limit = std::max(0, alpha - stand_pat - 100)](score_t gain) -> bool {
+            return gain >= limit;
+        };
 
-        // auto foo = std::ranges::subrange(zip.begin(), tail.begin());
+        auto tail = std::ranges::partition(zip, is_gainful, get_gain);
+        auto todo = std::ranges::subrange(zip.begin(), tail.begin());
+        std::ranges::sort(todo, std::greater<>{}, get_gain);
 
-        std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
-            return std::get<1>(pair);
-        });
-
-        // bool pos_check = position.is_check();
-
-        for (auto&& [move, gain] : zip) {
-            // bool move_check = position.check(move);
-
-            if (gain < 0 || stand_pat + gain + 100 < alpha) {
-                continue;
-            }
-
-            // if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 100 < alpha)) {
-            //     continue;
-            // }
-
-            // if (!pos_check && !move_check && gain < 0) {
-            //     continue;
-            // }
-
+        for (move_t move : todo | std::views::keys) {
             position.make_move(move);
-            int score = -(*this)(-beta, -alpha, height + 1);
+            score_t score = -qsearch(-beta, -alpha, height + 1);
             position.undo_move(move);
             
-            if (score >= beta) {
+            if (score >= beta)
                 return beta;
-            }
-            if (score > alpha) {
+            if (score > alpha)
                 alpha = score;
-            }
         }
-        
+
         return alpha;
     }
 
-    result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    result_t fsearch(score_t alpha, score_t beta, uint16_t height, int16_t depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
         if (should_stop()) {
             return {alpha, {}};
         }
 
         stats.nodes++;
-        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
+        stats.max_height = std::max(stats.max_height, height);
 
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition()) {
-            return {0, {}};
+            return {DRAW, {}};
         }
 
-        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_all_moves(buffer);
+        fbuffer_t<move_t> buffer;
+        auto moves = position.generate_all_moves(buffer);
 
         if (moves.empty()) {
-            return {position.is_check() ? -30000 + height : 0, {}};
+            return {position.is_check() ? static_cast<score_t>(MIN + height) : DRAW, {}};
         }
 
-        if (depth == 0 && position.is_check()) {
+        bool pv_node = (beta - alpha > 1);
+
+        if (pv_node && position.is_check()) {
             depth++;
         }
 
-        if (depth == 0) {
+        if (depth <= 0) {
             stats.nodes--;
-            int score = (*this)(alpha, beta, height);
+            score_t score = qsearch(alpha, beta, height);
             return {score, {}};
         }
 
         move_t best;
-        // const entry_t* const entry = transposition.get(position.hash());
-        // const auto entry = transposition.get(position.hash());
-        // static_assert(sizeof(decltype(entry)) == 10);
         if (const auto entry = transposition.get(position.hash())) {
             best = entry->move;
             if (entry->depth >= depth) {
@@ -197,62 +149,65 @@ struct searcher_t {
             }
         }
 
+        // {
+        //     score_t score = qsearch(alpha, beta, height);
+        //     if (!position.is_check() && score < alpha - 10 - 150 * depth * depth) {
+        //         return {score, {}};
+        //     }
+        //     if (!position.is_check() && score > beta + 50 + 150 * depth * depth) {
+        //         return {static_cast<score_t>((2 * score + beta) / 3), {}};
+        //     }
+        // }
+
         // int old_alpha = alpha;
 
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
         if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
-            int R = 2 + std::min(3, (depth - 1) / 3);
+            int16_t R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
-            result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
+            result_t result = -fsearch(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
             if (result.score >= beta) {
-                result = (*this)(alpha, beta, height, depth - 1 - R, pv_buffer);
+                result = fsearch(beta - 1, beta, height, depth - 1 - R, pv_buffer);
                 if (result.score >= beta) {
                     return {beta, {}};
                 }
             }
         }
 
-        // ProbCut parameters (tune!)
-        constexpr int MIN_PROBCUT_DEPTH = 7;
-        constexpr int PROBCUT_REDUCTION = 4;
+        // // ProbCut parameters (tune!)
+        constexpr int16_t MIN_PROBCUT_DEPTH = 6;
+        constexpr int16_t PROBCUT_REDUCTION = 3;
+        if (depth >= MIN_PROBCUT_DEPTH && !position.is_check()) {
 
-        bool pv_node = (beta - alpha > 1);
-        if (!pv_node
-            && depth >= MIN_PROBCUT_DEPTH
-            && !position.is_check()
-            && depth - PROBCUT_REDUCTION > 0) {
-
-            int margin = 10 + 15 * (depth - MIN_PROBCUT_DEPTH);
+            score_t margin = 0 + 25 * (depth - MIN_PROBCUT_DEPTH);
 
             {
-                int probcut = beta + margin;
-                int score = (*this)(probcut, probcut + 1, height);
+                score_t probcut = beta + margin;
+                score_t score = qsearch(probcut, probcut + 1, height);
+                if (score > probcut && depth - PROBCUT_REDUCTION > 0) {
+                    score = fsearch(probcut, probcut + 1, height, depth - PROBCUT_REDUCTION, pv_buffer).score;
+                }
                 if (score > probcut) {
-                    result_t r = (*this)(probcut, probcut + 1, height, depth - PROBCUT_REDUCTION, pv_buffer);
-                    if (r.score > probcut) {
-                        // return {beta, {}};
-                        return {r.score - (probcut - beta), {}};
-                    }
+                    return {score, {}};
                 }
             }
 
             {
-                int probcut = alpha - margin;
-                int score = (*this)(probcut - 1, probcut, height);
-                if (score < probcut) {
-                    result_t r = (*this)(probcut - 1, probcut, height, depth - PROBCUT_REDUCTION, pv_buffer);
-                    if (r.score < probcut) {
-                        // return {alpha, {}};
-                        return {r.score + (alpha - probcut), {}};
+                score_t probcut = alpha - margin;
+                score_t score = qsearch(probcut - 1, probcut, height);
+                if (score < probcut && depth - PROBCUT_REDUCTION > 0) {
+                    score = fsearch(probcut - 1, probcut, height, depth - PROBCUT_REDUCTION, pv_buffer).score;
+                    if (score < probcut) {
+                        return {score, {}};
                     }
                 }
             }
         }
 
         if (best == move_t{} && depth > 4) {
-            auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
+            auto pv = fsearch(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
                 best = pv.front();
             }
@@ -300,15 +255,15 @@ struct searcher_t {
             result_t result;
             if (pv_found) {
                 if (depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
+                    result = -fsearch(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
                 } else {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -fsearch(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
                 }
                 if (result.score >= alpha && result.score < beta) {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -fsearch(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 }
             } else {
-                result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                result = -fsearch(-beta, -alpha, height + 1, depth - 1, pv_buffer);
             }
             position.undo_move(move);
             // index++;
@@ -347,79 +302,34 @@ struct searcher_t {
         return {alpha, pv.first(length)};
     }
 
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     const int ASPIRATION_DELTA = 50;
-    //     int window_alpha = score - ASPIRATION_DELTA;
-    //     int window_beta = score + ASPIRATION_DELTA;
-
-    //     result_t result = (*this)(window_alpha, window_beta, 0, depth, pv);
-    //     if (result.score <= window_alpha || result.score >= window_beta) {
-    //         result = (*this)(-30000, window_beta, 0, depth, pv);
-    //     } else if (result.score >= window_beta) {
-    //         result = (*this)(window_alpha, 30000, 0, depth, pv);
-    //     }
-    //     return result;
-    // }
-
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     constexpr int MATE = 30000;
-    //     int delta = 25; // initial half-window; tune if desired (e.g., 16 + 4*depth)
-
-    //     int alpha = std::max(-MATE, score - delta);
-    //     int beta  = std::min(+MATE, score + delta);
-
-    //     result_t result = (*this)(alpha, beta, 0, depth, pv);
-
-    //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-    //     while (result.score <= alpha || result.score >= beta) {
-    //         if (should_stop()) break;
-    //         delta <<= 2;
-    //         if (result.score <= alpha)
-    //             alpha = std::max(-MATE, score - delta);
-    //         else
-    //             beta = std::min(+MATE, score + delta);
-    //         result_t result2 = (*this)(alpha, beta, 0, depth, pv_buffer);
-    //         if (!result2.pv.empty()) {
-    //             result = result_t{result2.score, pv.first(result2.pv.size())};
-    //             std::ranges::copy(result2.pv, pv.begin());
-    //         } else {
-    //             result = {result2.score, result.pv};
-    //         }
-    //         if (alpha <= -MATE || beta >= MATE)
-    //             break; // full window reached
-    //     }
-
-    //     return result;
-    // }
+    result_t asearch(score_t score, int16_t depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+        constexpr score_t delta = 25;
+        const score_t alpha = score - delta;
+        const score_t beta = score + delta;
+        result_t result = fsearch(alpha, beta, 0, depth, pv);
+        if (should_stop()) {
+            return result;
+        }
+        if (result.score <= alpha) {
+            result = fsearch(MIN, beta, 0, depth, pv);
+        } else if (result.score >= beta) {
+            result = fsearch(alpha, MAX, 0, depth, pv);
+        }
+        return result;
+    }
 
     enum unexpected_e : uint8_t { insufficient_material, rule50, repetition, checkmate, stalemate };
 
-    std::expected<move_t, unexpected_e> search(int depth) noexcept {
+    std::expected<move_t, unexpected_e> isearch(int16_t depth) noexcept {
         using as_floating_point = std::chrono::duration<double, std::ratio<1>>;
 
-        if (position.is_no_material()) {
-            return std::unexpected(insufficient_material);
-        }
-
-        if (position.is_50_moves_rule()) {
-            return std::unexpected(rule50);
-        }
-
-        if (position.is_3_fold_repetition()) {
-            return std::unexpected(repetition);
-        }
-
-        std::array<move_t, position_t::MAX_MOVES_PER_PLY> move_buffer;
-        std::span<move_t> moves = position.generate_all_moves(move_buffer);
+        fbuffer_t<move_t> move_buffer;
+        auto moves = position.generate_all_moves(move_buffer);
 
         if (moves.empty()) {
-            if (position.is_check()) {
-                return std::unexpected(checkmate);
-            } else {
-                return std::unexpected(stalemate);
-            }
+            if (position.is_check()) return std::unexpected(checkmate);
+            else return std::unexpected(stalemate);
         }
-
         if (moves.size() == 1) {
             return moves.front();
         }
@@ -427,35 +337,48 @@ struct searcher_t {
         move_t best{};
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
         auto t0 = Clock::now();
-        // int score = (*this)(-30000, +30000, 0);
-        for (int iteration = 1; iteration <= depth; ++iteration) {
-            result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
-            // result_t result = aspiration_window(score, iteration, pv_buffer);
-            // score = result.score;
-            if (should_stop()) {
-                break;
+        score_t score = qsearch(MIN, MAX, 0);
+
+        for (int16_t iteration = 1; iteration <= depth; ++iteration) {
+            result_t result = asearch(score, iteration, pv_buffer);
+            score = result.score;
+            if (should_stop()) break;
+
+            std::span<move_t> pv_for_print;
+            if (!result.pv.empty()) {
+                best = result.pv.front();
+                pv_for_print = result.pv;
+            } else {
+                // Try TT move, else fallback to first legal move
+                if (auto e = transposition.get(position.hash()); e && e->move != move_t{}) {
+                    best = e->move;
+                } else {
+                    best = moves.front();
+                }
+                pv_buffer[0] = best;
+                pv_for_print = std::span<move_t>{pv_buffer}.first(1);
             }
-            best = result.pv.front();
+
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
 
             char buffer[1024];
-
-            if (result.score < -29000 || result.score > 29000) {
-                constexpr int MATE_SCORE = 30000;
-                int plies = MATE_SCORE - std::abs(result.score);
+            if (result.score < (MIN + 1000) || result.score > (MAX - 1000)) {
+                int plies = MAX - std::abs(result.score);
                 int mate_in = (plies + 1) / 2;
-                if (result.score < 0)
-                    mate_in = -mate_in;
-                char* out = std::format_to(buffer, "info depth {} seldepth {} score mate {:+} nodes {} nps {} hashfull {} time {} pv {}\n", 
-                    iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                if (result.score < DRAW) mate_in = -mate_in;
+                char* out = std::format_to(buffer,
+                    "info depth {} seldepth {} score mate {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
+                    iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time),
+                    transposition.full(), size_t(time * 1000), pv_for_print);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             } else {
-                char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
-                    iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                char* out = std::format_to(buffer,
+                    "info depth {} seldepth {} score cp {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
+                    iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time),
+                    transposition.full(), size_t(time * 1000), pv_for_print);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             }
-
             std::fflush(stdout);
 
             history.age();
@@ -464,7 +387,7 @@ struct searcher_t {
         return best;
     }
 
-    std::expected<move_t, unexpected_e> operator()(int depth) {
+    std::expected<move_t, unexpected_e> operator()(int16_t depth) noexcept {
         constexpr static std::string_view unexpected_text[] = {
             "draw by insufficient material"sv,
             "draw by 50 moves rule"sv,
@@ -474,7 +397,7 @@ struct searcher_t {
         };
         constexpr std::string_view none = "bestmove (none)\n"sv;
         char buffer[100];
-        auto result = search(depth);
+        auto result = isearch(depth);
         if (result) {
             char* out = std::format_to(buffer, "bestmove {}\n", result.value());
             std::fwrite(buffer, sizeof(char), out - buffer, stdout);
