@@ -53,7 +53,9 @@ class evaluator {
         std::int32_t evaluate(const position_t& position) const noexcept {
             const Entry& t = refresh(position, position.get_side());
             const Entry& o = refresh(position, ~position.get_side());
-            return nnue.evaluate(t, o, position.by().size());
+            // return nnue.evaluate(t, o, position.by().size());
+            const std::int32_t score = nnue.evaluate(t, o, position.by().size());
+            return (score / 4) * 4;
         }
     };
 
