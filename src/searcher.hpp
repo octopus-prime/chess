@@ -213,6 +213,9 @@ struct searcher_t {
                 }
             }
         }
+
+        if (depth >= 6 && best == move_t{}) 
+            depth--;
         
         if (best == move_t{} && depth > 4) {
             auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;

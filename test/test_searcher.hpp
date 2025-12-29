@@ -13,77 +13,37 @@ void test_searcher() {
         history_t history{position};
         evaluator evaluator{};
         searcher_t searcher{position, transposition, history, evaluator, []() { return false; }};
-        int depth = 10;
+
+        constexpr int depth = 12;
 
         size_t nodes = 0;
+        std::ifstream stream("../epd/bkt.txt");
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        ut::expect(searcher(depth) == "e2e4"_m);
+        while (stream.good()) {
+            std::array<char, 256> epd;
+            stream.getline(epd.data(), epd.size());
+            std::string_view epd_view{epd.data()};
 
-        searcher.clear();
-        position = "1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - -"sv;
-        ut::expect(searcher(depth) == "d6d1"_m);
-        nodes += searcher.stats.nodes;
+            if (epd_view.empty() || epd_view.starts_with("#")) {
+                break;
+            }
 
-        searcher.clear();
-        position = "rnbqkb1r/p3pppp/1p6/2ppP3/3N4/2P5/PPP1QPPP/R1B1KB1R w KQkq -"sv;
-        ut::expect(searcher(depth) == "e5e6"_m);
-        nodes += searcher.stats.nodes;
+            auto parts = epd_view | std::views::split("; "sv);
+            auto part = parts.begin();
 
-        searcher.clear();
-        position = "r1b2rk1/2q1b1pp/p2ppn2/1p6/3QP3/1BN1B3/PPP3PP/R4RK1 w - -"sv;
-        ut::expect(searcher(depth) == "c3d5"_m);
-        nodes += searcher.stats.nodes;
+            std::string_view fen_part{*part++};
+            position = fen_part;
 
-        searcher.clear();
-        position = "1nk1r1r1/pp2n1pp/4p3/q2pPp1N/b1pP1P2/B1P2R2/2P1B1PP/R2Q2K1 w - -"sv;
-        ut::expect(searcher(depth) == "h5f6"_m);
-        nodes += searcher.stats.nodes;
+            std::string_view move_part{*part++};
+            move_t move{move_part};
 
-        searcher.clear();
-        position = "4b3/p3kp2/6p1/3pP2p/2pP1P2/4K1P1/P3N2P/8 w - -"sv;
-        ut::expect(searcher(depth) == "f4f5"_m);
-        nodes += searcher.stats.nodes;
+            auto result = searcher(depth);
+            ut::expect(result == move) << epd_view;
 
-        searcher.clear();
-        position = "3rr1k1/pp3pp1/1qn2np1/8/3p4/PP1R1P2/2P1NQPP/R1B3K1 b - -"sv;
-        ut::expect(searcher(depth) == "c6e5"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "r3r1k1/ppqb1ppp/8/4p1NQ/8/2P5/PP3PPP/R3R1K1 b - -"sv;
-        ut::expect(searcher(depth) == "d7f5"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "r2q1rk1/4bppp/p2p4/2pP4/3pP3/3Q4/PP1B1PPP/R3R1K1 w - -"sv;
-        ut::expect(searcher(depth) == "b2b4"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "2rq1rk1/1b2bp2/p3pn1p/np1p2p1/3P4/PPNQB1P1/3NPPBP/R1R3K1 b - -"sv;
-        ut::expect(searcher(depth) == "f6g4"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"sv;
-        ut::expect(searcher(depth) == "e2a6"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -"sv;
-        ut::expect(searcher(depth) == "c4c5"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ -"sv;
-        ut::expect(searcher(depth) == "d7c8q"_m);
-        nodes += searcher.stats.nodes;
-
-        searcher.clear();
-        position = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - -"sv;
-        ut::expect(searcher(depth) == "c3d5"_m);
-        nodes += searcher.stats.nodes;
+            nodes += searcher.stats.nodes;
+            searcher.clear();
+        }
 
         auto t1 = std::chrono::high_resolution_clock::now();
         auto time = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
@@ -91,8 +51,8 @@ void test_searcher() {
 
         std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
 
-        ut::expect(ut::lt(nodes, 36000000));
-        // ut::expect(ut::lt(time, 16000));
-        // ut::expect(ut::gt(nps, 2200000));
+        ut::expect(ut::lt(nodes, 200000000));
+        // ut::expect(ut::lt(time, 78000));
+        // ut::expect(ut::gt(nps, 2470000));
     };
 }
