@@ -12,7 +12,6 @@ struct searcher_t {
 
     struct statistics_t {
         size_t nodes = 0;
-        // size_t qnodes = 0;
         size_t max_height = 0;
     };
 
@@ -32,135 +31,74 @@ struct searcher_t {
     evaluator& evaluator;
     std::function<bool()> should_stop;
     statistics_t stats;
-    // std::atomic<bool> should_stop_flag{false};
 
     void clear() noexcept {
         transposition.clear();
         history.clear();
         stats.nodes = 0;
         stats.max_height = 0;
-        // should_stop_flag = false;
     }
-
-    // void request_stop() noexcept {
-    //     should_stop_flag = true;
-    // }
-
-    // bool should_stop() const noexcept {
-    //     return should_stop_flag.load();
-    // }
 
     int operator()(int alpha, int beta, int height) noexcept {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
-        // if (position.is_check()) {
-        //     stats.nodes--;
-        //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-        //     return (*this)(alpha, beta, height, 0, pv_buffer).score;
-        // }
-
-        // if (position.is_no_material()) {
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition()) {
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return 0;
-        }
 
-        // side_e side = position.get_side();
-
-        // int stand_pat = position.get_material() + position.attackers(side).size() - position.attackers(~side).size();
-        // int stand_pat = position.get_material() + evaluator.evaluate(position) / 8;
-        // int stand_pat = evaluator.evaluate(position);
         int stand_pat = evaluator.evaluate(position, alpha, beta);
-        // if (std::abs(stand_pat - alpha) < 50 || std::abs(stand_pat - beta) < 50) {
-        //     stand_pat = evaluator.evaluate(position);
-        // }
 
-        // // Prevent Q-search explosion
-        // if (q_depth > 6) {
-        //     return stand_pat;
-        // }
-
-        if (stand_pat >= beta) {
+        if (stand_pat >= beta)
             return beta;
-        }
-        if (stand_pat > alpha) {
+        if (stand_pat > alpha)
             alpha = stand_pat;
-        }
 
         std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_active_moves(buffer);
 
         std::array<int16_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) {
-            return position.see(move);
-        });
+        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) { return position.see(move); });
 
         auto zip = std::views::zip(moves, gains);
-
-        // auto tail = std::ranges::partition(zip, [&](const auto& pair) {
-        //     return std::get<1>(pair) >= 0;  // Keep only non-negative gains
-        // });
-
-        // auto foo = std::ranges::subrange(zip.begin(), tail.begin());
-
-        std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) {
-            return std::get<1>(pair);
-        });
-
-        // bool pos_check = position.is_check();
+        std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) { return std::get<1>(pair); });
 
         for (auto&& [move, gain] : zip) {
-            // bool move_check = position.check(move);
-
-            if (gain < 0 || stand_pat + gain + 100 < alpha) {
+            if (gain < 0 || stand_pat + gain + 100 < alpha)
                 continue;
-            }
-
-            // if (!pos_check && !move_check && (gain < 0 || stand_pat + gain + 100 < alpha)) {
-            //     continue;
-            // }
-
-            // if (!pos_check && !move_check && gain < 0) {
-            //     continue;
-            // }
 
             position.make_move(move);
             int score = -(*this)(-beta, -alpha, height + 1);
             position.undo_move(move);
             
-            if (score >= beta) {
+            if (score >= beta)
                 return beta;
-            }
-            if (score > alpha) {
+            if (score > alpha)
                 alpha = score;
-            }
         }
         
         return alpha;
     }
 
     result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-        if (should_stop()) {
+        if (should_stop())
             return {alpha, {}};
-        }
 
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition()) {
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return {0, {}};
-        }
 
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_all_moves(buffer);
 
-        if (moves.empty()) {
+        if (moves.empty())
             return {position.is_check() ? -30000 + height : 0, {}};
-        }
 
-        if (depth == 0 && position.is_check()) {
+        bool is_pv = (beta - alpha) > 1;
+
+        if (depth == 0 && position.is_check())
             depth++;
-        }
 
         if (depth == 0) {
             stats.nodes--;
@@ -169,9 +107,6 @@ struct searcher_t {
         }
 
         move_t best;
-        // const entry_t* const entry = transposition.get(position.hash());
-        // const auto entry = transposition.get(position.hash());
-        // static_assert(sizeof(decltype(entry)) == 10);
         if (const auto entry = transposition.get(position.hash())) {
             best = entry->move;
             if (entry->depth >= depth) {
@@ -197,8 +132,6 @@ struct searcher_t {
             }
         }
 
-        // int old_alpha = alpha;
-
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
         if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
@@ -214,9 +147,9 @@ struct searcher_t {
             }
         }
 
-        if (depth >= 6 && best == move_t{}) 
+        if (depth >= 7 && best == move_t{}) 
             depth--;
-        
+
         if (best == move_t{} && depth > 4) {
             auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
@@ -227,81 +160,44 @@ struct searcher_t {
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
         bool pv_found = false;
-        // move_picker_t::phase_e pv_phase = move_picker_t::TT_MOVES;
         bool position_check = position.is_check();
-        // size_t index = 0;
         for (auto&& phase : move_picker_t::ALL) {
-        //     size_t phase_index = 0;
-            // auto phase_moves = move_picker(phase);
-        for (auto&& [move, eval] : move_picker(phase)) {
-            // auto see_eval = eval.see;
-            // bool move_check = position.check(move);
-
-            // if (height == 0 && depth > 6) {
-            //     // std::println("info currmove {} currmovenumber {} see {} hist {}", move, index + 1, eval.see, eval.history);
-            //     std::println("info currmove {} currmovenumber {}", move, index + 1);
-            //     std::fflush(stdout);
-            // }
-
-            // if (depth <= 4 && pv_found && !position_check && !move_check && position.get_material() + see_eval + 200 * depth < alpha) {
-            //     index++;
-            //     phase_index++;
-            //     continue;
-            // }
-
-            // if (depth == 1 && pv_found && !position_check && position.get_material() + see_eval + 150 < alpha) {
-            //     index++;
-            //     phase_index++;
-            //     continue;
-            // }
-
-            // if (!position.is_check() && pv_found && depth > 10 && index > 20 && gain <= 0) {
-            //     index++;
-            //     continue;
-            // }
-
-
-            position.make_move(move);
-            bool move_check = position.is_check();
-            result_t result;
-            if (pv_found) {
-                if (depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
+            for (auto&& [move, eval] : move_picker(phase)) {
+                position.make_move(move);
+                bool move_check = position.is_check();
+                result_t result;
+                if (pv_found) {
+                    if (!is_pv && depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
+                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
+                    } else {
+                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
+                    }
+                    if (result.score >= alpha && result.score < beta) {
+                        result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    }
                 } else {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                }
-                if (result.score >= alpha && result.score < beta) {
                     result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 }
-            } else {
-                result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
-            }
-            position.undo_move(move);
-            // index++;
-            // phase_index++;
+                position.undo_move(move);
 
-            if (result.score >= beta) {
-                transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                history.put(move, height, 6 * depth);
-                pv.front() = move;
-                std::ranges::copy(result.pv, pv.begin() + 1);
-                return {beta, pv.first(result.pv.size() + 1)};
-            }
+                if (result.score >= beta) {
+                    transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
+                    history.put(move, height, 6 * depth);
+                    pv.front() = move;
+                    std::ranges::copy(result.pv, pv.begin() + 1);
+                    return {beta, pv.first(result.pv.size() + 1)};
+                }
 
-            if (result.score > alpha) {
-                alpha = result.score;
-                best = move;
-                pv_found = true;
-                // pv_phase = phase;
-                pv.front() = move;
-                std::ranges::copy(result.pv, pv.begin() + 1);
-                length = result.pv.size() + 1;
-                // history.put(best, height, depth);
-            } else {
-                // history.put(move, height, -depth);
+                if (result.score > alpha) {
+                    alpha = result.score;
+                    best = move;
+                    pv_found = true;
+                    pv.front() = move;
+                    std::ranges::copy(result.pv, pv.begin() + 1);
+                    length = result.pv.size() + 1;
+                }
             }
         }
-    }
 
         if (pv_found) {
             transposition.put(position.hash(), best, alpha, flag_t::EXACT, depth);
