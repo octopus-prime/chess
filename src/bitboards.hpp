@@ -64,20 +64,18 @@ public:
 
 template <size_t MAX>
 struct bitboards::slider_lookup_t {
-  struct meta_t {
-    bitboard mask;
+  struct info_t {
+    bitboard occ;
+    bitboard all;
     std::uint32_t offset;
-
-    std::uint32_t operator[](bitboard occupied) const noexcept {
-      return offset + _pext_u64(occupied, mask);
-    }
   };
 
-  std::array<meta_t, SQUARE_MAX> meta{};
-  std::array<bitboard, MAX> data{};
+  std::array<info_t, SQUARE_MAX> infos{};
+  std::array<std::uint16_t, MAX> data{};
 
   bitboard operator()(square square, bitboard occupied) const noexcept {
-    return data[meta[square][occupied]];
+    const info_t& info = infos[square];
+    return _pdep_u64(data[info.offset + _pext_u64(occupied, info.occ)], info.all);
   }
 };
 
@@ -233,13 +231,14 @@ const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() 
   std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
-    bitboard rooks = slider(board, 0ull, 0ull);
-    rooks = relevant_occupancy(sq, rooks);
-    std::uint32_t size = 1u << rooks.size();
-    lookup.meta[sq] = {rooks, offset};
+    bitboard all = slider(board, 0ull, 0ull);
+    bitboard occ = relevant_occupancy(sq, all);
+    std::uint32_t size = 1u << occ.size();
+    lookup.infos[sq] = {occ, all, offset};
     for (std::uint32_t index = 0; index < size; ++index) {
-      bitboard blockers = _pdep_u64(index, rooks);
-      lookup.data[offset + index] = slider(board, 0ull, blockers);
+      bitboard blockers = _pdep_u64(index, occ);
+      bitboard attacks  = slider(board, 0ull, blockers);
+      lookup.data[offset + index] = _pext_u64(attacks, all);
     }
     offset += size;
   }
@@ -251,13 +250,14 @@ const bitboards::slider_lookup_bishop_queen_t bitboards::lookup_bishop_queen = [
   std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
-    bitboard bishops = slider(0ull, board, 0ull);
-    bishops = relevant_occupancy(sq, bishops);
-    std::uint32_t size = 1u << bishops.size();
-    lookup.meta[sq] = {bishops, offset};
+    bitboard all = slider(0ull, board, 0ull);
+    bitboard occ = relevant_occupancy(sq, all);
+    std::uint32_t size = 1u << occ.size();
+    lookup.infos[sq] = {occ, all, offset};
     for (std::uint32_t index = 0; index < size; ++index) {
-      bitboard blockers = _pdep_u64(index, bishops);
-      lookup.data[offset + index] = slider(0ull, board, blockers);
+      bitboard blockers = _pdep_u64(index, occ);
+      bitboard attacks  = slider(0ull, board, blockers);
+      lookup.data[offset + index] = _pext_u64(attacks, all);
     }
     offset += size;
   }
