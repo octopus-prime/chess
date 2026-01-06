@@ -2,6 +2,7 @@
 
 #include <position.hpp>
 #include "ut.hpp"
+// #include "blocking_input.hpp"
 #include <print>
 #include <cassert>
 
@@ -29,34 +30,22 @@ struct perft_t {
     }
 };
 
-class blocking_input {
-  std::ifstream stream;
-  std::mutex mutex;
-
-public:
-  blocking_input(std::string_view file) : stream{file.data()}, mutex{} {}
-
-  bool read(std::span<char, 256> epd) {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!stream.good())
-      return false;
-    stream.getline(epd.data(), epd.size());
-    return true;
-  }
-};
-
 void test_perft() {
     namespace ut = boost::ut;
     using ut::operator""_test;
 
     "perft"_test = [] {
-        constexpr int depth = 4;
         auto concurrency = std::jthread::hardware_concurrency();
         blocking_input input{"../epd/perft_long.txt"};
         std::vector<std::jthread> workers{};
         workers.reserve(concurrency);
+
+        constexpr int depth = 4;
+        std::size_t nodes = 0;
+        auto t0 = std::chrono::high_resolution_clock::now();
+
         for (int i = 0; i < concurrency; ++i) {
-            workers.emplace_back([&input]() {
+            workers.emplace_back([&input, &nodes]() {
                 char epd[256];
                 position_t position;
                 while (input.read(epd)) {
@@ -71,8 +60,18 @@ void test_perft() {
                     perft_t perft{position};
                     size_t count = perft(depth);
                     ut::expect(ut::eq(count, expected)) << pos_part;
+                    nodes += count;
                 }
             });
         }
+
+        for (auto& worker : workers)
+            worker.join();
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        auto time = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+        auto nps = size_t(nodes / (time / 1000.0));
+
+        std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
     };
 }

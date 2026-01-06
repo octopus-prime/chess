@@ -166,6 +166,8 @@ private:
     position_t position_;
     transposition_t transposition;
     history_t history{position_};
-    evaluator evaluator;
+    nnue::big_nnue big;
+    nnue::small_nnue small;
+    evaluator evaluator{big, small};
     std::jthread search;
 };

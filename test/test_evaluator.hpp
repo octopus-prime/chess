@@ -30,7 +30,9 @@ void test_evaluator() {
 
     "evaluator"_test = []() {
         position_t position{};
-        evaluator evaluator{};
+        nnue::big_nnue big;
+        nnue::small_nnue small;
+        evaluator evaluator{big, small};
         int alpha = -30000;
         int beta = +30000;
 

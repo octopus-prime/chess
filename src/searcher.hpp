@@ -39,7 +39,7 @@ struct searcher_t {
         stats.max_height = 0;
     }
 
-    int operator()(int alpha, int beta, int height) noexcept {
+    int qsearch(int alpha, int beta, int height) noexcept {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
@@ -67,7 +67,7 @@ struct searcher_t {
                 continue;
 
             position.make_move(move);
-            int score = -(*this)(-beta, -alpha, height + 1);
+            int score = -qsearch(-beta, -alpha, height + 1);
             position.undo_move(move);
             
             if (score >= beta)
@@ -79,7 +79,15 @@ struct searcher_t {
         return alpha;
     }
 
-    result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    enum NodeType {
+        NonPV,
+        PV
+    };
+
+    template<NodeType nodeType>
+    result_t fsearch(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+        constexpr bool PVNode = nodeType != NonPV;
+
         if (should_stop())
             return {alpha, {}};
 
@@ -95,14 +103,12 @@ struct searcher_t {
         if (moves.empty())
             return {position.is_check() ? -30000 + height : 0, {}};
 
-        bool is_pv = (beta - alpha) > 1;
-
         if (depth == 0 && position.is_check())
             depth++;
 
         if (depth == 0) {
             stats.nodes--;
-            int score = (*this)(alpha, beta, height);
+            int score = qsearch(alpha, beta, height);
             return {score, {}};
         }
 
@@ -137,52 +143,37 @@ struct searcher_t {
         if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
-            result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
+            result_t result = -fsearch<NonPV>(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
-            if (result.score >= beta) {
-                result = (*this)(alpha, beta, height, depth - 1 - R, pv_buffer);
-                if (result.score >= beta) {
-                    return {beta, {}};
-                }
-            }
+            if (result.score >= beta)// && PVNode)
+                result = fsearch<PV>(alpha, beta, height, depth - 1 - R, pv_buffer);
+            if (result.score >= beta)
+                return {beta, {}};
         }
 
         if (depth >= 7 && best == move_t{}) 
-            depth--;
-
-        if (best == move_t{} && depth > 4) {
-            auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
-            if (!pv.empty()) {
-                best = pv.front();
-            }
-        }
+            depth--;// -= PVNode ? 1 : depth / 5;
 
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
         bool pv_found = false;
-        bool position_check = position.is_check();
         for (auto&& phase : move_picker_t::ALL) {
             for (auto&& [move, eval] : move_picker(phase)) {
                 position.make_move(move);
-                bool move_check = position.is_check();
                 result_t result;
                 if (pv_found) {
-                    if (!is_pv && depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
-                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
-                    } else {
-                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                    }
-                    if (result.score >= alpha && result.score < beta) {
-                        result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -fsearch<NonPV>(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
+                    if (result.score >= alpha && PVNode) {
+                        result = -fsearch<PV>(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                     }
                 } else {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -fsearch<nodeType>(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 }
                 position.undo_move(move);
 
                 if (result.score >= beta) {
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                    history.put(move, height, 6 * depth);
+                    history.put(move, height, depth);
                     pv.front() = move;
                     std::ranges::copy(result.pv, pv.begin() + 1);
                     return {beta, pv.first(result.pv.size() + 1)};
@@ -208,51 +199,6 @@ struct searcher_t {
 
         return {alpha, pv.first(length)};
     }
-
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     const int ASPIRATION_DELTA = 50;
-    //     int window_alpha = score - ASPIRATION_DELTA;
-    //     int window_beta = score + ASPIRATION_DELTA;
-
-    //     result_t result = (*this)(window_alpha, window_beta, 0, depth, pv);
-    //     if (result.score <= window_alpha || result.score >= window_beta) {
-    //         result = (*this)(-30000, window_beta, 0, depth, pv);
-    //     } else if (result.score >= window_beta) {
-    //         result = (*this)(window_alpha, 30000, 0, depth, pv);
-    //     }
-    //     return result;
-    // }
-
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     constexpr int MATE = 30000;
-    //     int delta = 25; // initial half-window; tune if desired (e.g., 16 + 4*depth)
-
-    //     int alpha = std::max(-MATE, score - delta);
-    //     int beta  = std::min(+MATE, score + delta);
-
-    //     result_t result = (*this)(alpha, beta, 0, depth, pv);
-
-    //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-    //     while (result.score <= alpha || result.score >= beta) {
-    //         if (should_stop()) break;
-    //         delta <<= 2;
-    //         if (result.score <= alpha)
-    //             alpha = std::max(-MATE, score - delta);
-    //         else
-    //             beta = std::min(+MATE, score + delta);
-    //         result_t result2 = (*this)(alpha, beta, 0, depth, pv_buffer);
-    //         if (!result2.pv.empty()) {
-    //             result = result_t{result2.score, pv.first(result2.pv.size())};
-    //             std::ranges::copy(result2.pv, pv.begin());
-    //         } else {
-    //             result = {result2.score, result.pv};
-    //         }
-    //         if (alpha <= -MATE || beta >= MATE)
-    //             break; // full window reached
-    //     }
-
-    //     return result;
-    // }
 
     enum unexpected_e : uint8_t { insufficient_material, rule50, repetition, checkmate, stalemate };
 
@@ -289,11 +235,8 @@ struct searcher_t {
         move_t best{};
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
         auto t0 = Clock::now();
-        // int score = (*this)(-30000, +30000, 0);
         for (int iteration = 1; iteration <= depth; ++iteration) {
-            result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
-            // result_t result = aspiration_window(score, iteration, pv_buffer);
-            // score = result.score;
+            result_t result = fsearch<PV>(-30000, 30000, 0, iteration, pv_buffer);
             if (should_stop()) {
                 break;
             }

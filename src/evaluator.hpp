@@ -9,7 +9,7 @@ class evaluator {
     class nnue_evaluator {
         using Entry = NNUE::Entry;
 
-        NNUE nnue;
+        const NNUE& nnue;
         mutable Entry entries[SIDE_MAX][SQUARE_MAX];
 
         const Entry& refresh(const position_t& position, side_e side) const noexcept {
@@ -42,7 +42,7 @@ class evaluator {
         }
 
     public:
-        nnue_evaluator() : nnue{} {
+        nnue_evaluator(const NNUE& nnue) : nnue{nnue} {
             for (side_e side : {WHITE, BLACK}) {
                 for (Entry& entry : entries[side]) {
                     nnue.initialize(entry);
@@ -63,7 +63,7 @@ class evaluator {
     nnue_evaluator<nnue::big_nnue> big;
 
 public:
-    evaluator() : small{}, big{} {
+    evaluator(const nnue::big_nnue& big, const nnue::small_nnue& small) : small{small}, big{big} {
     }
 
     std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {

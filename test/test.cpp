@@ -1,3 +1,5 @@
+#include "blocking_input.hpp"
+
 #include "test_square.hpp"
 #include "test_side.hpp"
 #include "test_piece.hpp"
