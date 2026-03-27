@@ -55,7 +55,8 @@ class evaluator {
             const Entry& o = refresh(position, ~position.get_side());
             // return nnue.evaluate(t, o, position.by().size());
             const std::int32_t score = nnue.evaluate(t, o, position.by().size());
-            return (score / 4) * 4;
+            constexpr auto f = 8;
+            return (score / f) * f;
         }
     };
 

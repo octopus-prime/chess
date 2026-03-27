@@ -42,10 +42,16 @@ struct bitboard /* : std::ranges::view_interface<bitboard_t> */ {
         : value{v} {}
 
     constexpr bitboard(square s) noexcept
-        : bitboard{1ull << s} {}
+        : bitboard{0b1ull << s} {}
+
+    constexpr bitboard(file_e file) noexcept
+        : bitboard{0b00000001'00000001'00000001'00000001'00000001'00000001'00000001'00000001ull << file} {}
+
+    constexpr bitboard(rank_e rank) noexcept
+        : bitboard{0b11111111ull << (8 * rank)} {}
 
     constexpr bitboard(std::string_view string) noexcept
-        : bitboard{std::ranges::fold_left(string | std::views::chunk(2), 0ull, [](auto bb, auto &&chunk) {
+        : bitboard{std::ranges::fold_left(string | std::views::chunk(2), 0ull, [](auto bb, auto &&chunk) static {
               return bb | bitboard{square{std::string_view{chunk.data(), chunk.size()}}};
           })} {}
 

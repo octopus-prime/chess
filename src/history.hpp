@@ -35,17 +35,17 @@ struct history_t {
     void age() noexcept {
         constexpr uint16_t DECAY = 10;
 
-        auto age_butterfly = [](butterfly_entry_t& entry) {
+        auto age_butterfly = [](butterfly_entry_t& entry) static {
             for (auto &from : entry)
                 for (auto &to : from)
                     to /= DECAY;
         };
-        auto age_piece_to = [](piece_to_entry_t& entry) {
+        auto age_piece_to = [](piece_to_entry_t& entry) static {
             for (auto &type : entry) 
                 for (auto &to : type)
                     to /= DECAY;
         };
-        auto age_continuation = [](continuation_entry_t& entry) {
+        auto age_continuation = [](continuation_entry_t& entry) static {
             for (auto &from_type : entry)
                 for (auto &from_square : from_type)
                     for (auto &to_type : from_square)

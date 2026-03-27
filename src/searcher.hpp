@@ -56,15 +56,11 @@ struct searcher_t {
         std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_active_moves(buffer);
 
-        std::array<int16_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> gains;
-        std::ranges::transform(moves, gains.begin(), [&](const move_t& move) { return position.see(move); });
+        move_picker_t move_picker{position, history, move_t{}, height, moves};
 
-        auto zip = std::views::zip(moves, gains);
-        std::ranges::sort(zip, std::greater<>{}, [&](auto&& pair) { return std::get<1>(pair); });
-
-        for (auto&& [move, gain] : zip) {
-            if (gain < 0 || stand_pat + gain + 100 < alpha)
-                continue;
+        for (auto&& [move, gain] : move_picker(move_picker_t::GOOD_CAPTURE_MOVES)) {
+            if (stand_pat + gain.see + 150 < alpha)
+                break;
 
             position.make_move(move);
             int score = -(*this)(-beta, -alpha, height + 1);
@@ -132,6 +128,23 @@ struct searcher_t {
             }
         }
 
+        int eval = evaluator.evaluate(position, alpha, beta);
+
+        // Razoring
+        if (!is_pv && !position.is_check() && eval < alpha - 502 - 306 * depth * depth) {
+            int score = (*this)(alpha, beta, height);
+            if (score > -29000 && score < 29000)
+                return {score, {}};
+        }
+
+        // Futility pruning
+        {
+            auto futility_margin = depth * (76 - 21 * (best == move_t{}));
+            if (!is_pv && !position.is_check() && depth < 15 && eval - futility_margin >= beta && beta > -29000 && eval < 29000) {
+                return {(2 * beta + eval) / 3, {}};
+            }
+        }
+
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
         if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
@@ -150,7 +163,7 @@ struct searcher_t {
         if (depth >= 7 && best == move_t{}) 
             depth--;
 
-        if (best == move_t{} && depth > 4) {
+        if (best == move_t{}  && depth > 5) {
             auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
                 best = pv.front();
@@ -160,19 +173,13 @@ struct searcher_t {
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
         bool pv_found = false;
-        bool position_check = position.is_check();
         for (auto&& phase : move_picker_t::ALL) {
             for (auto&& [move, eval] : move_picker(phase)) {
                 position.make_move(move);
-                bool move_check = position.is_check();
                 result_t result;
                 if (pv_found) {
-                    if (!is_pv && depth > 4 && !position_check && !move_check && eval.see <= 0 && eval.history == 0) {
-                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth / 2, pv_buffer);
-                    } else {
-                        result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                    }
-                    if (result.score >= alpha && result.score < beta) {
+                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
+                    if (result.score >= alpha && is_pv) {
                         result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                     }
                 } else {
@@ -184,8 +191,7 @@ struct searcher_t {
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
                     history.put(move, height, 6 * depth);
                     pv.front() = move;
-                    std::ranges::copy(result.pv, pv.begin() + 1);
-                    return {beta, pv.first(result.pv.size() + 1)};
+                    return {beta, pv.first(1)};
                 }
 
                 if (result.score > alpha) {
@@ -194,7 +200,7 @@ struct searcher_t {
                     pv_found = true;
                     pv.front() = move;
                     std::ranges::copy(result.pv, pv.begin() + 1);
-                    length = result.pv.size() + 1;
+                    length = 1 + result.pv.size();
                 }
             }
         }
@@ -326,7 +332,7 @@ struct searcher_t {
         return best;
     }
 
-    std::expected<move_t, unexpected_e> operator()(int depth) {
+    std::expected<move_t, unexpected_e> operator()(int depth) noexcept {
         constexpr static std::string_view unexpected_text[] = {
             "draw by insufficient material"sv,
             "draw by 50 moves rule"sv,

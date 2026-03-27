@@ -73,7 +73,7 @@ struct position_t {
 
         square ksq = by(~side, KING).front();
         bitboard b = bitboards::bishop_queen(ksq, by()) & ~by(side);
-        bitboard r = bitboards::rook_queen(ksq, by()) & ~by(side);
+        bitboard r = rook(ksq, by()) & ~by(side);
         std::array<bitboard, TYPE_MAX> check_targets = {
             0ull, // NO_TYPE
             bitboards::pawn(ksq, ~side) & ~by(side), // PAWN
@@ -204,9 +204,9 @@ struct position_t {
             case BISHOP:
             return bitboards::bishop_queen(king_square, by()) & bitboard{to};
             case ROOK:
-            return bitboards::rook_queen(king_square, by()) & bitboard{to};
+            return rook(king_square, by()) & bitboard{to};
             case QUEEN:
-            return (bitboards::bishop_queen(king_square, by()) | bitboards::rook_queen(king_square, by())) & bitboard{to};
+            return (bitboards::bishop_queen(king_square, by()) | rook(king_square, by())) & bitboard{to};
             default:
             return false;
         }
@@ -270,7 +270,7 @@ std::tuple<bitboard, bitboard> position_t::find_snipers_and_blockers(side_e side
 }
 
 inline void position_t::setup(std::string_view fen) noexcept {
-    constexpr auto castle_lookup = [](char ch) -> bitboard {
+    constexpr auto castle_lookup = [](char ch) static -> bitboard {
         switch (ch) {
             case 'K': return "h1"_b; case 'k': return "h8"_b;
             case 'Q': return "a1"_b; case 'q': return "a8"_b;
@@ -364,53 +364,42 @@ inline bitboard position_t::attackers(square square) const noexcept {
     bitboard attackers = 0ull;
     attackers |= bitboards::king(square) & by(KING);
     attackers |= bitboards::knight(square) & by(KNIGHT);
-    attackers |= bitboards::rook_queen(square, by()) & by(ROOK, QUEEN);
+    attackers |= rook(square, by()) & by(ROOK, QUEEN);
     attackers |= bitboards::bishop_queen(square, by()) & by(BISHOP, QUEEN);
     attackers |= bitboards::pawn(square, WHITE) & by(BPAWN);
     attackers |= bitboards::pawn(square, BLACK) & by(WPAWN);
     return attackers;
 }
 
-inline size_t write_moves(std::span<move_t> buffer, uint32_t mask, __m512i moves) {
-   _mm512_mask_compressstoreu_epi16(buffer.data(), mask, moves);
-    return std::popcount(mask);
-}
+static constexpr int FromSqShift = 10;
+static constexpr int ToSqShift   = 4;
+static constexpr __v64qu AllSquares = {
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63};
 
 inline size_t splat_moves(std::span<move_t> buffer, square from, bitboard targets) {
     constexpr square_e placeholder{0};
-    alignas(64) static constexpr auto table = [] {
-        std::array<move_t, 64> table{};
-        for (square to : bitboards::ALL)
-            table[to] = move_t{placeholder, to};
-        return table;
-    }();
+    const size_t count = targets.size();
+    // assert(count <= 16);  // max 16 attacks
 
-    const auto sources = _mm512_set1_epi16(move_t{from, placeholder});
-    const auto moves = span_cast<const __m512i>(std::span{table});
+    const __v16hu vec_from = _mm256_set1_epi16(move_t(from, placeholder));
+    const __v16hu vec_to = _mm256_cvtepi8_epi16(_mm512_castsi512_si128(_mm512_maskz_compress_epi8(targets, AllSquares)));
+    const __v16hu moves = vec_from | vec_to << ToSqShift;
 
-    size_t index = 0;
-    index += write_moves(buffer.subspan(index), targets >> 0,  _mm512_or_si512(moves[0], sources));
-    index += write_moves(buffer.subspan(index), targets >> 32, _mm512_or_si512(moves[1], sources));
-    return index;
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(buffer.data()), moves);
+    return count;
 }
 
-template<int offset>
+template<int16_t offset>
 inline size_t splat_pawn_moves(std::span<move_t> buffer, bitboard targets) noexcept {
-    alignas(64) static constexpr auto table = [] {
-        std::array<move_t, 64> table{};
-        for (square to : bitboards::ALL) {
-            square_e from {(int8_t) std::clamp<int>(to + offset, 0, 63)};
-            table[to] = move_t{from, to};
-        }
-        return table;
-    }();
+    const size_t count = targets.size();
+    // assert(count <= 8);  // max 8 attacks
 
-    const auto moves = span_cast<const __m512i>(std::span{table});
+    const __v8hu vec_to    = _mm_cvtepi8_epi16(_mm512_castsi512_si128(_mm512_maskz_compress_epi8(targets, AllSquares)));
+    const __v8hu vec_from  = vec_to + offset;
+    const __v8hu moves = vec_from << FromSqShift | vec_to << ToSqShift;
 
-    size_t index = 0;
-    index += write_moves(buffer.subspan(index), targets >> 0,  moves[0]);
-    index += write_moves(buffer.subspan(index), targets >> 32, moves[1]);
-    return index;
+    _mm_storeu_si128(reinterpret_cast<__m128i*>(buffer.data()), moves);
+    return count;
 }
 
 inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bitboard valid_targets, bitboard promotion_targets, std::initializer_list<type_e> promotion_types, std::span<const bitboard, TYPE_MAX> check_targets) const noexcept {
@@ -476,7 +465,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
     }
 
     for (square from_square : by(side, ROOK, QUEEN)) {
-         index += splat_moves(buffer.subspan(index), from_square, bitboards::rook_queen(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]);
+         index += splat_moves(buffer.subspan(index), from_square, rook(from_square, by()) & (valid_targets | check_targets[at(from_square).type()]) & valid_for_pinned[from_square]);
     }
 
     for (square from_square : by(side, BISHOP, QUEEN)) {
@@ -586,7 +575,7 @@ inline std::span<move_t> position_t::generate_moves(std::span<move_t> buffer, bi
             square psq = side == WHITE ? esq - 8 : esq + 8;
             if (ksq.rank() == psq.rank()) {
                 bitboard occ = by() & ~(bitboard{psq} | bitboard{from});
-                if (bitboards::rook_queen(ksq, occ) & by(~side, ROOK, QUEEN))
+                if (rook(ksq, occ) & by(~side, ROOK, QUEEN))
                     continue;
             }
             buffer[index++] = {from, esq};

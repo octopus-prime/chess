@@ -164,7 +164,7 @@ inline bitboard bitboards::slider(bitboard rook_queen, bitboard bishop_queen, bi
   quadboard b = {rook_queen, rook_queen, bishop_queen, bishop_queen};
   quadboard o = {occupied, occupied, occupied, occupied};
   quadboard t = expand(b, ~o);
-  return t[0] | t[1] | t[2] | t[3];
+  return __builtin_reduce_or(t);
 }
 
 template <>
@@ -174,7 +174,7 @@ inline bitboard bitboards::pawn<WHITE>(bitboard in) noexcept
   constexpr dualboard m = {~"h"_f, ~"a"_f};
   dualboard b = {in, in};
   dualboard t = (b << s) & m;
-  return t[0] | t[1];
+  return __builtin_reduce_or(t);
 }
 
 template <>
@@ -184,28 +184,28 @@ inline bitboard bitboards::pawn<BLACK>(bitboard in) noexcept
   constexpr dualboard m = {~"a"_f, ~"h"_f};
   dualboard b = {in, in};
   dualboard t = (b >> s) & m;
-  return t[0] | t[1];
+  return __builtin_reduce_or(t);
 }
 
 inline bitboard bitboards::pawn(bitboard in, side_e side) noexcept {
   return side == WHITE ? pawn<WHITE>(in) : pawn<BLACK>(in);
 }
 
-const bitboards::leaper_lookup_t bitboards::lookup_king = []() noexcept {
+const bitboards::leaper_lookup_t bitboards::lookup_king = []() static noexcept {
   leaper_lookup_t lookup{};
   for (square sq : ALL)
     lookup[sq] = leaper(bitboard{sq}, bitboard{});
   return lookup;
 }();
 
-const bitboards::leaper_lookup_t bitboards::lookup_knight = []() noexcept {
+const bitboards::leaper_lookup_t bitboards::lookup_knight = []() static noexcept {
   leaper_lookup_t lookup{};
   for (square sq : ALL)
     lookup[sq] = leaper(bitboard{}, bitboard{sq});
   return lookup;
 }();
 
-const std::array<bitboards::leaper_lookup_t, 2> bitboards::lookup_pawn = []() noexcept {
+const std::array<bitboards::leaper_lookup_t, 2> bitboards::lookup_pawn = []() static noexcept {
   std::array<bitboards::leaper_lookup_t, 2> lookup{};
   for (square sq : ALL) {
     lookup[WHITE][sq] = pawn<WHITE>(bitboard{sq});
@@ -226,45 +226,66 @@ inline bitboard bitboards::relevant_occupancy(square square, bitboard occupied) 
   return occupied;
 }
 
-const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() noexcept {
+const bitboards::slider_lookup_rook_queen_t bitboards::lookup_rook_queen = []() static noexcept {
   slider_lookup_rook_queen_t lookup{};
   std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard all = slider(board, 0ull, 0ull);
     bitboard occ = relevant_occupancy(sq, all);
-    std::uint32_t size = 1u << occ.size();
     lookup.infos[sq] = {occ, all, offset};
-    for (std::uint32_t index = 0; index < size; ++index) {
+    for (std::uint32_t index = 0; index < (1u << occ.size()); ++index, ++offset) {
       bitboard blockers = _pdep_u64(index, occ);
       bitboard attacks  = slider(board, 0ull, blockers);
-      lookup.data[offset + index] = _pext_u64(attacks, all);
+      lookup.data[offset] = _pext_u64(attacks, all);
     }
-    offset += size;
   }
   return lookup;
 }();
 
-const bitboards::slider_lookup_bishop_queen_t bitboards::lookup_bishop_queen = []() noexcept {
+bitboard rook(const square rook, const bitboard occupied) noexcept {
+  using table_t = std::array<std::array<uint8_t, 256>, 8>;
+
+  static const table_t table = [] static {
+    table_t temp{};
+    for (file_e file : enum_range(FA, FH)) {
+      const square square{file, R1};
+      const bitboard squares(square);
+      const bitboard all(R1);
+      for (size_t index = 0; index < 256; ++index) {
+        const bitboard blockers = _pdep_u64(index, all);
+        const bitboard attacks = bitboards::slider(squares, {}, blockers);
+        temp[file][index] = _pext_u64(attacks, all);
+      }
+    }
+    return temp;
+  }();
+  auto rank_mask = bitboard(rook.rank());
+  auto file_mask = bitboard(rook.file());
+  auto rank_attacks = _pdep_u64(table[rook.file()][_pext_u64(occupied, rank_mask)], rank_mask);
+  auto file_attacks = _pdep_u64(table[rook.rank()][_pext_u64(occupied, file_mask)], file_mask);
+  return rank_attacks | file_attacks;
+}
+
+
+const bitboards::slider_lookup_bishop_queen_t bitboards::lookup_bishop_queen = []() static noexcept {
   slider_lookup_bishop_queen_t lookup{};
   std::uint32_t offset = 0;
   for (square sq : ALL) {
     bitboard board{sq};
     bitboard all = slider(0ull, board, 0ull);
     bitboard occ = relevant_occupancy(sq, all);
-    std::uint32_t size = 1u << occ.size();
     lookup.infos[sq] = {occ, all, offset};
-    for (std::uint32_t index = 0; index < size; ++index) {
+    for (std::uint32_t index = 0; index < (1u << occ.size()); ++index, ++offset) {
       bitboard blockers = _pdep_u64(index, occ);
       bitboard attacks  = slider(0ull, board, blockers);
-      lookup.data[offset + index] = _pext_u64(attacks, all);
+      lookup.data[offset] = _pext_u64(attacks, all);
     }
-    offset += size;
   }
   return lookup;
 }();
 
-const bitboards::line_lookup_t bitboards::lookup_line = []() noexcept {
+const bitboards::line_lookup_t bitboards::lookup_line = []() static noexcept {
   line_lookup_t lookup{};
   for (square from : ALL) {
     for (square to : ALL) {
@@ -284,7 +305,7 @@ const bitboards::line_lookup_t bitboards::lookup_line = []() noexcept {
   return lookup;
 }();
 
-const bitboards::ray_lookup_t bitboards::lookup_ray = []() noexcept {
+const bitboards::ray_lookup_t bitboards::lookup_ray = []() static noexcept {
   ray_lookup_t lookup{};
 
   for (square from : ALL) {

@@ -34,7 +34,7 @@ void test_evaluator() {
         int alpha = -30000;
         int beta = +30000;
 
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 4));
+        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 0));
 
         position.make_move("e2e4"_m);
         ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), -24));
@@ -43,7 +43,7 @@ void test_evaluator() {
         ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 8));
 
         position = "1k6/8/8/8/3r4/2P5/8/K7 w - -"sv;
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), -420));
+        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), -416));
 
         position = "1k6/8/8/8/3r4/2P5/8/K7 b - -"sv;
         ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 560));

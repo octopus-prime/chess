@@ -35,5 +35,5 @@ template <typename T>
 constexpr auto enum_range(T first, T last) noexcept {
     auto f = std::to_underlying(first);
     auto l = std::to_underlying(last);
-    return std::views::iota(f, l + 1) | std::views::transform([](auto e) { return static_cast<T>(e); });
+    return std::views::iota(f, l + 1) | std::views::transform([](auto e) static { return static_cast<T>(e); });
 }
