@@ -85,22 +85,7 @@ struct searcher_t {
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return {0, {}};
 
-        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_all_moves(buffer);
-
-        if (moves.empty())
-            return {position.is_check() ? -30000 + height : 0, {}};
-
         bool is_pv = (beta - alpha) > 1;
-
-        if (depth == 0 && position.is_check())
-            depth++;
-
-        if (depth == 0) {
-            stats.nodes--;
-            int score = (*this)(alpha, beta, height);
-            return {score, {}};
-        }
 
         move_t best;
         if (const auto entry = transposition.get(position.hash())) {
@@ -128,22 +113,37 @@ struct searcher_t {
             }
         }
 
+        if (depth == 0 && position.is_check())
+            depth++;
+
+        if (depth == 0) {
+            stats.nodes--;
+            int score = (*this)(alpha, beta, height);
+            return {score, {}};
+        }
+
         int eval = evaluator.evaluate(position, alpha, beta);
 
         // Razoring
-        if (!is_pv && !position.is_check() && eval < alpha - 502 - 306 * depth * depth) {
-            int score = (*this)(alpha, beta, height);
-            if (score > -29000 && score < 29000)
-                return {score, {}};
+        {
+            auto margin = 500 + 300 * depth * depth;
+            if (!is_pv && !position.is_check() && eval < alpha - margin && alpha < 29000 && eval > -29000)
+                return {(*this)(alpha, beta, height), {}};
         }
 
         // Futility pruning
         {
-            auto futility_margin = depth * (76 - 21 * (best == move_t{}));
-            if (!is_pv && !position.is_check() && depth < 15 && eval - futility_margin >= beta && beta > -29000 && eval < 29000) {
+            auto margin = depth * (50 + 25 * (best != move_t{}));
+            if (!is_pv && !position.is_check() && depth < 8 && eval - margin >= beta && beta > -29000 && eval < 29000)
                 return {(2 * beta + eval) / 3, {}};
-            }
         }
+
+        
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_all_moves(buffer);
+
+        if (moves.empty())
+            return {position.is_check() ? -30000 + height : 0, {}};
 
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
