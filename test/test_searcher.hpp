@@ -12,7 +12,8 @@ void test_searcher() {
         transposition_t transposition{};
         history_t history{position};
         evaluator evaluator{};
-        searcher_t searcher{position, transposition, history, evaluator, []() { return false; }};
+        correction_t correction{};
+        searcher_t searcher{position, transposition, history, evaluator, correction, []() { return false; }};
 
         constexpr int depth = 12;
 
@@ -51,8 +52,8 @@ void test_searcher() {
 
         std::println("nodes = {}, time = {} ms, nps = {}", nodes, time, nps);
 
-        ut::expect(ut::lt(nodes, 55000000));
-        // ut::expect(ut::lt(time, 30000));
-        // ut::expect(ut::gt(nps, 1800000));
+        ut::expect(ut::lt(nodes, 45000000));
+        // ut::expect(ut::lt(time, 22000));
+        // ut::expect(ut::gt(nps, 2050000));
     };
 }

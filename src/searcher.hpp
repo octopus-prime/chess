@@ -4,6 +4,7 @@
 #include "transposition.hpp"
 #include "history.hpp"
 #include "evaluator.hpp"
+#include "correction.hpp"
 #include "move_picker.hpp"
 #include <chrono>
 #include <expected>
@@ -29,12 +30,14 @@ struct searcher_t {
     transposition_t& transposition;
     history_t& history;
     evaluator& evaluator;
+    correction_t& correction;
     std::function<bool()> should_stop;
     statistics_t stats;
 
     void clear() noexcept {
         transposition.clear();
         history.clear();
+        correction.clear();
         stats.nodes = 0;
         stats.max_height = 0;
     }
@@ -47,6 +50,13 @@ struct searcher_t {
             return 0;
 
         int stand_pat = evaluator.evaluate(position, alpha, beta);
+        // {
+        //     move_t lm = position.last_move();
+        //     type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
+        //     stand_pat += correction.get(position.pawn_hash(), position.nonpawn_hash(),
+        //                                 position.get_side(), lt, lm.to());
+        //     stand_pat = std::clamp(stand_pat, -29000, 29000);
+        // }
 
         if (stand_pat >= beta)
             return beta;
@@ -123,6 +133,14 @@ struct searcher_t {
         }
 
         int eval = evaluator.evaluate(position, alpha, beta);
+        int static_eval = eval;  // raw — preserved for correction update
+        {
+            move_t lm = position.last_move();
+            type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
+            int corr = correction.get(position.pawn_hash(), position.nonpawn_hash(),
+                                      position.get_side(), lt, lm.to());
+            eval = std::clamp(eval + corr * 2, -29000, 29000);
+        }
 
         // Razoring
         {
@@ -210,6 +228,15 @@ struct searcher_t {
             history.put(best, height, depth);
         } else {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
+        }
+
+        if (!position.is_check() && depth > 3) {
+            move_t lm = position.last_move();
+            type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
+            int bonus = std::clamp((alpha - static_eval) * depth,
+                                   -correction_t::LIMIT / 4, correction_t::LIMIT / 4);
+            correction.update(position.pawn_hash(), position.nonpawn_hash(),
+                              position.get_side(), lt, lm.to(), bonus);
         }
 
         return {alpha, pv.first(length)};

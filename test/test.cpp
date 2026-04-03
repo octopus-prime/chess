@@ -7,6 +7,7 @@
 #include "test_position.hpp"
 #include "test_perft.hpp"
 #include "test_history.hpp"
+#include "test_correction.hpp"
 #include "test_transposition.hpp"
 #include "test_move_picker.hpp"
 #include "test_evaluator.hpp"
@@ -28,6 +29,7 @@ int main() {
     test_position();
     test_perft();
     test_history();
+    test_correction();
     test_transposition();
     test_move_picker();
     test_evaluator();

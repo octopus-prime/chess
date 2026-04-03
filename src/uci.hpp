@@ -4,6 +4,7 @@
 #include "evaluator.hpp"
 #include "transposition.hpp"
 #include "history.hpp"
+#include "correction.hpp"
 #include "searcher.hpp"
 
 #include <functional>
@@ -136,7 +137,7 @@ private:
             auto should_stop = [=] () {
                 return stop_token.stop_requested() || Clock::now() >= end;
             };
-            searcher_t searcher{position_, transposition, history, evaluator, should_stop};
+            searcher_t searcher{position_, transposition, history, evaluator, correction, should_stop};
             // move_t best = 
             (void) searcher(100);
 
@@ -167,5 +168,6 @@ private:
     transposition_t transposition;
     history_t history{position_};
     evaluator evaluator;
+    correction_t correction;
     std::jthread search;
 };

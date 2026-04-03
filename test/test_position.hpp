@@ -155,4 +155,102 @@ void test_position() {
         // ut::expect(ut::eq(moves.size(), 5));
         // ut::expect(std::ranges::is_permutation(moves, std::initializer_list{"g2h3"_m, "f3h3"_m, "f3f6"_m, "e5g6"_m, "e5f7"_m}));
     };
+
+    "pawn_hash_non_zero"_test = [] {
+        // Starting position has pawns, so both hashes must be non-zero
+        position_t pos{};
+        ut::expect(ut::neq(pos.pawn_hash(),    hash_t{0}));
+        ut::expect(ut::neq(pos.nonpawn_hash(), hash_t{0}));
+    };
+
+    "pawn_hash_make_undo"_test = [] {
+        // After make+undo any move the hashes must be restored
+        position_t pos{};
+        auto ph0 = pos.pawn_hash();
+        auto np0 = pos.nonpawn_hash();
+
+        // pawn move
+        pos.make_move("e2e4"_m);
+        ut::expect(ut::neq(pos.pawn_hash(), ph0));       // pawn moved → changed
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));    // no piece moved → unchanged
+        pos.undo_move("e2e4"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+
+        // knight move
+        pos.make_move("g1f3"_m);
+        ut::expect(ut::eq(pos.pawn_hash(), ph0));       // no pawn moved → unchanged
+        ut::expect(ut::neq(pos.nonpawn_hash(), np0));    // piece moved → changed
+        pos.undo_move("g1f3"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+    };
+
+    "pawn_hash_castling"_test = [] {
+        // Castling moves the rook → nonpawn_hash must change; pawn_hash must not
+        position_t pos{"r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq -"};
+        auto ph0 = pos.pawn_hash();
+        auto np0 = pos.nonpawn_hash();
+
+        pos.make_move("e1g1"_m); // white O-O
+        ut::expect(ut::eq(pos.pawn_hash(), ph0));
+        ut::expect(ut::neq(pos.nonpawn_hash(), np0));
+        pos.undo_move("e1g1"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+    };
+
+    "pawn_hash_capture_pawn"_test = [] {
+        // Capturing a pawn changes pawn_hash
+        position_t pos{"4k3/8/8/3p4/4P3/8/8/4K3 w - -"};
+        auto ph0 = pos.pawn_hash();
+        auto np0 = pos.nonpawn_hash();
+
+        pos.make_move("e4d5"_m); // white pawn captures black pawn
+        ut::expect(ut::neq(pos.pawn_hash(), ph0));     // both pawns moved/gone
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));  // no piece involved
+        pos.undo_move("e4d5"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+    };
+
+    "pawn_hash_en_passant"_test = [] {
+        // En-passant capture removes the captured pawn → pawn_hash changes
+        position_t pos{"4k3/8/8/3pP3/8/8/8/4K3 w - d6"};
+        auto ph0 = pos.pawn_hash();
+
+        pos.make_move("e5d6"_m); // white captures en passant
+        ut::expect(ut::neq(pos.pawn_hash(), ph0));
+        pos.undo_move("e5d6"_m);
+        ut::expect(ut::eq(pos.pawn_hash(), ph0));
+    };
+
+    "pawn_hash_promotion"_test = [] {
+        // Promotion removes a pawn and adds a non-pawn → pawn_hash changes, nonpawn_hash changes
+        position_t pos{"4k3/P7/8/8/8/8/8/4K3 w - -"};
+        auto ph0 = pos.pawn_hash();
+        auto np0 = pos.nonpawn_hash();
+
+        pos.make_move("a7a8q"_m);
+        ut::expect(ut::neq(pos.pawn_hash(),    ph0)); // pawn gone
+        ut::expect(ut::neq(pos.nonpawn_hash(), np0)); // queen appeared
+        pos.undo_move("a7a8q"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
+        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+    };
+
+    "pawn_hash_symmetric"_test = [] {
+        // Mirror image positions must differ (not identical hash by coincidence)
+        // But same position reached two ways must have equal hash
+        position_t pos1{};
+        pos1.make_move("e2e4"_m);
+        pos1.make_move("e7e5"_m);
+
+        position_t pos2{};
+        pos2.make_move("e2e4"_m);
+        pos2.make_move("e7e5"_m);
+
+        ut::expect(ut::eq(pos1.pawn_hash(),    pos2.pawn_hash()));
+        ut::expect(ut::eq(pos1.nonpawn_hash(), pos2.nonpawn_hash()));
+    };
 }

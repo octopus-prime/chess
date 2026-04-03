@@ -1,4 +1,5 @@
 #include "uci.hpp"
+#include "correction.hpp"
 #include <print>
 
 void uci_demo() {
@@ -40,7 +41,8 @@ static void bench() {
     transposition_t transposition{};
     history_t history{position};
     evaluator eval{};
-    searcher_t searcher{position, transposition, history, eval, []() { return false; }};
+    correction_t correction{};
+    searcher_t searcher{position, transposition, history, eval, correction, []() { return false; }};
 
     constexpr int depth = 12;
 
