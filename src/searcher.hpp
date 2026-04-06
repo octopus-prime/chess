@@ -50,25 +50,27 @@ struct searcher_t {
             return 0;
 
         int stand_pat = evaluator.evaluate(position, alpha, beta);
-        // {
-        //     move_t lm = position.last_move();
-        //     type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
-        //     stand_pat += correction.get(position.pawn_hash(), position.nonpawn_hash(),
-        //                                 position.get_side(), lt, lm.to());
-        //     stand_pat = std::clamp(stand_pat, -29000, 29000);
-        // }
 
         if (stand_pat >= beta)
             return beta;
         if (stand_pat > alpha)
             alpha = stand_pat;
 
+        // {
+        //     move_t lm = position.last_move();
+        //     type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
+        //     stand_pat += correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
+        //                                 position.get_side(), lt, lm.to());
+        //     stand_pat = std::clamp(stand_pat, -29000, 29000);
+        // }
+
         std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_active_moves(buffer);
 
         move_picker_t move_picker{position, history, move_t{}, height, moves};
 
-        for (auto&& [move, gain] : move_picker(move_picker_t::GOOD_CAPTURE_MOVES)) {
+        for (auto&& type : {move_picker_t::GOOD_CAPTURE_MOVES/*, move_picker_t::QUIET_MOVES*/}) {
+        for (auto&& [move, gain] : move_picker(type)) {
             if (stand_pat + gain.see + 150 < alpha)
                 break;
 
@@ -81,7 +83,8 @@ struct searcher_t {
             if (score > alpha)
                 alpha = score;
         }
-        
+        }
+
         return alpha;
     }
 
@@ -89,12 +92,7 @@ struct searcher_t {
         if (should_stop())
             return {alpha, {}};
 
-        stats.nodes++;
-        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
-
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
-            return {0, {}};
-
+            
         bool is_pv = (beta - alpha) > 1;
 
         move_t best;
@@ -127,19 +125,25 @@ struct searcher_t {
             depth++;
 
         if (depth == 0) {
-            stats.nodes--;
+            // stats.nodes--;
             int score = (*this)(alpha, beta, height);
             return {score, {}};
         }
 
+        stats.nodes++;
+        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
+
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
+            return {0, {}};
+        
         int eval = evaluator.evaluate(position, alpha, beta);
         int static_eval = eval;  // raw — preserved for correction update
         {
             move_t lm = position.last_move();
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
-            int corr = correction.get(position.pawn_hash(), position.nonpawn_hash(),
+            int corr = correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
                                       position.get_side(), lt, lm.to());
-            eval = std::clamp(eval + corr * 2, -29000, 29000);
+            eval = std::clamp(eval + corr, -29000, 29000);
         }
 
         // Razoring
@@ -233,9 +237,8 @@ struct searcher_t {
         if (!position.is_check() && depth > 3) {
             move_t lm = position.last_move();
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
-            int bonus = std::clamp((alpha - static_eval) * depth,
-                                   -correction_t::LIMIT / 4, correction_t::LIMIT / 4);
-            correction.update(position.pawn_hash(), position.nonpawn_hash(),
+            int bonus = (alpha - static_eval) * depth;
+            correction.update(position.pawn_hash(), position.minor_hash(), position.major_hash(),
                               position.get_side(), lt, lm.to(), bonus);
         }
 

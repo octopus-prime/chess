@@ -16,7 +16,7 @@ struct entry_t {
 	move_t move;	//2
 	int16_t score;	//2
 	flag_t flag;	//1
-	uint8_t	depth;	//1
+	int8_t	depth = -1;	//1
 };
 
 static_assert(sizeof(entry_t) == 12);
@@ -37,8 +37,8 @@ class transposition_t {
 
 public:
     // transposition_t() : buckets(1'000'037) {}
-    // transposition_t() : buckets(499'999) {}
-    transposition_t() : buckets(250'007) {}
+    transposition_t() : buckets(499'999) {}
+    // transposition_t() : buckets(250'007) {}
     // transposition_t() : buckets(125'003) {}
 
     void clear() noexcept {
@@ -46,7 +46,7 @@ public:
 		used = 0;
     }
 
-    void put(hash_t hash, move_t move, int16_t score, flag_t flag, uint8_t depth) noexcept {
+    void put(hash_t hash, move_t move, int16_t score, flag_t flag, int8_t depth) noexcept {
         bucket_t& bucket = buckets[hash % buckets.size()];
 		uint32_t key = static_cast<uint32_t>(hash);
 		entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);

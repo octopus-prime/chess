@@ -157,61 +157,73 @@ void test_position() {
     };
 
     "pawn_hash_non_zero"_test = [] {
-        // Starting position has pawns, so both hashes must be non-zero
+        // Starting position has pieces, so all hashes must be non-zero
         position_t pos{};
-        ut::expect(ut::neq(pos.pawn_hash(),    hash_t{0}));
-        ut::expect(ut::neq(pos.nonpawn_hash(), hash_t{0}));
+        ut::expect(ut::neq(pos.pawn_hash(),  hash_t{0}));
+        ut::expect(ut::neq(pos.minor_hash(), hash_t{0})); // knights + bishops
+        ut::expect(ut::neq(pos.major_hash(), hash_t{0})); // rooks + queens
     };
 
     "pawn_hash_make_undo"_test = [] {
         // After make+undo any move the hashes must be restored
         position_t pos{};
-        auto ph0 = pos.pawn_hash();
-        auto np0 = pos.nonpawn_hash();
+        auto ph0  = pos.pawn_hash();
+        auto mnh0 = pos.minor_hash();
+        auto mjh0 = pos.major_hash();
 
-        // pawn move
+        // pawn move — only pawn_hash changes
         pos.make_move("e2e4"_m);
-        ut::expect(ut::neq(pos.pawn_hash(), ph0));       // pawn moved → changed
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));    // no piece moved → unchanged
+        ut::expect(ut::neq(pos.pawn_hash(),  ph0));   // pawn moved
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));   // unchanged
+        ut::expect(ut::eq(pos.major_hash(), mjh0));   // unchanged
         pos.undo_move("e2e4"_m);
-        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
 
-        // knight move
+        // knight move — only minor_hash changes
         pos.make_move("g1f3"_m);
-        ut::expect(ut::eq(pos.pawn_hash(), ph0));       // no pawn moved → unchanged
-        ut::expect(ut::neq(pos.nonpawn_hash(), np0));    // piece moved → changed
+        ut::expect(ut::eq(pos.pawn_hash(),   ph0));   // unchanged
+        ut::expect(ut::neq(pos.minor_hash(), mnh0));  // knight moved
+        ut::expect(ut::eq(pos.major_hash(),  mjh0));  // unchanged
         pos.undo_move("g1f3"_m);
-        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
     };
 
     "pawn_hash_castling"_test = [] {
-        // Castling moves the rook → nonpawn_hash must change; pawn_hash must not
+        // Castling moves the rook (major) → major_hash must change; pawn/minor must not
         position_t pos{"r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq -"};
-        auto ph0 = pos.pawn_hash();
-        auto np0 = pos.nonpawn_hash();
+        auto ph0  = pos.pawn_hash();
+        auto mnh0 = pos.minor_hash();
+        auto mjh0 = pos.major_hash();
 
         pos.make_move("e1g1"_m); // white O-O
-        ut::expect(ut::eq(pos.pawn_hash(), ph0));
-        ut::expect(ut::neq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),   ph0));
+        ut::expect(ut::eq(pos.minor_hash(),  mnh0));
+        ut::expect(ut::neq(pos.major_hash(), mjh0));
         pos.undo_move("e1g1"_m);
-        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
     };
 
     "pawn_hash_capture_pawn"_test = [] {
-        // Capturing a pawn changes pawn_hash
+        // Capturing a pawn only changes pawn_hash
         position_t pos{"4k3/8/8/3p4/4P3/8/8/4K3 w - -"};
-        auto ph0 = pos.pawn_hash();
-        auto np0 = pos.nonpawn_hash();
+        auto ph0  = pos.pawn_hash();
+        auto mnh0 = pos.minor_hash();
+        auto mjh0 = pos.major_hash();
 
         pos.make_move("e4d5"_m); // white pawn captures black pawn
-        ut::expect(ut::neq(pos.pawn_hash(), ph0));     // both pawns moved/gone
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));  // no piece involved
+        ut::expect(ut::neq(pos.pawn_hash(),  ph0));   // both pawns moved/gone
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));   // no piece involved
+        ut::expect(ut::eq(pos.major_hash(), mjh0));   // no piece involved
         pos.undo_move("e4d5"_m);
-        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
     };
 
     "pawn_hash_en_passant"_test = [] {
@@ -226,17 +238,30 @@ void test_position() {
     };
 
     "pawn_hash_promotion"_test = [] {
-        // Promotion removes a pawn and adds a non-pawn → pawn_hash changes, nonpawn_hash changes
+        // Queen promotion: pawn_hash changes + major_hash changes, minor_hash unchanged
         position_t pos{"4k3/P7/8/8/8/8/8/4K3 w - -"};
         auto ph0 = pos.pawn_hash();
-        auto np0 = pos.nonpawn_hash();
+        auto mnh0 = pos.minor_hash(); // 0 — no minor pieces
+        auto mjh0 = pos.major_hash(); // 0 — no major pieces
 
         pos.make_move("a7a8q"_m);
-        ut::expect(ut::neq(pos.pawn_hash(),    ph0)); // pawn gone
-        ut::expect(ut::neq(pos.nonpawn_hash(), np0)); // queen appeared
+        ut::expect(ut::neq(pos.pawn_hash(),  ph0));    // pawn gone
+        ut::expect(ut::eq(pos.minor_hash(),  mnh0));   // no minor involved
+        ut::expect(ut::neq(pos.major_hash(), mjh0));   // queen appeared
         pos.undo_move("a7a8q"_m);
-        ut::expect(ut::eq(pos.pawn_hash(),    ph0));
-        ut::expect(ut::eq(pos.nonpawn_hash(), np0));
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
+
+        // Knight promotion: pawn_hash changes + minor_hash changes, major_hash unchanged
+        pos.make_move("a7a8n"_m);
+        ut::expect(ut::neq(pos.pawn_hash(),  ph0));    // pawn gone
+        ut::expect(ut::neq(pos.minor_hash(), mnh0));   // knight appeared
+        ut::expect(ut::eq(pos.major_hash(),  mjh0));   // no major involved
+        pos.undo_move("a7a8n"_m);
+        ut::expect(ut::eq(pos.pawn_hash(),  ph0));
+        ut::expect(ut::eq(pos.minor_hash(), mnh0));
+        ut::expect(ut::eq(pos.major_hash(), mjh0));
     };
 
     "pawn_hash_symmetric"_test = [] {
@@ -250,7 +275,8 @@ void test_position() {
         pos2.make_move("e2e4"_m);
         pos2.make_move("e7e5"_m);
 
-        ut::expect(ut::eq(pos1.pawn_hash(),    pos2.pawn_hash()));
-        ut::expect(ut::eq(pos1.nonpawn_hash(), pos2.nonpawn_hash()));
+        ut::expect(ut::eq(pos1.pawn_hash(),  pos2.pawn_hash()));
+        ut::expect(ut::eq(pos1.minor_hash(), pos2.minor_hash()));
+        ut::expect(ut::eq(pos1.major_hash(), pos2.major_hash()));
     };
 }

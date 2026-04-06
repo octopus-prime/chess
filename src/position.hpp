@@ -30,7 +30,8 @@ struct position_t {
         bitboard blockers[SIDE_MAX]; // blockers of snipers
         hash_t hash;
         hash_t pawn_hash;
-        hash_t nonpawn_hash;
+        hash_t minor_hash;
+        hash_t major_hash;
         square en_passant;
         uint8_t half_move;
         uint8_t repetition;
@@ -41,7 +42,7 @@ struct position_t {
         // bool operator==(const state_t& other) const noexcept = default;
     };
 
-    static_assert(sizeof(state_t) == 80);
+    static_assert(sizeof(state_t) == 88);
 
     constexpr static std::string_view STARTPOS = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"sv;
 
@@ -178,8 +179,12 @@ struct position_t {
         return states.back().pawn_hash;
     }
 
-    hash_t nonpawn_hash() const noexcept {
-        return states.back().nonpawn_hash;
+    hash_t minor_hash() const noexcept {
+        return states.back().minor_hash;
+    }
+
+    hash_t major_hash() const noexcept {
+        return states.back().major_hash;
     }
 
     move_t last_move() const noexcept {
@@ -309,8 +314,10 @@ inline void position_t::setup(std::string_view fen) noexcept {
                 new_state.hash ^= hashes::hash(piece, square);
                 if (piece.type() == PAWN)
                     new_state.pawn_hash ^= hashes::hash(piece, square);
-                else if (piece.type() != KING)
-                    new_state.nonpawn_hash ^= hashes::hash(piece, square);
+                else if (piece.type() == KNIGHT || piece.type() == BISHOP)
+                    new_state.minor_hash ^= hashes::hash(piece, square);
+                else if (piece.type() == ROOK || piece.type() == QUEEN)
+                    new_state.major_hash ^= hashes::hash(piece, square);
             }
         }
     }
@@ -645,8 +652,10 @@ inline void position_t::make_move(move_t move) noexcept {
         st.hash ^= hashes::hash(captured, to);
         if (captured.type() == PAWN)
             st.pawn_hash ^= hashes::hash(captured, to);
-        else if (captured.type() != KING)
-            st.nonpawn_hash ^= hashes::hash(captured, to);
+        else if (captured.type() == KNIGHT || captured.type() == BISHOP)
+            st.minor_hash ^= hashes::hash(captured, to);
+        else if (captured.type() == ROOK || captured.type() == QUEEN)
+            st.major_hash ^= hashes::hash(captured, to);
         material[~side] -= type_values[captured.type()];
         st.half_move = 0;
 
@@ -683,8 +692,11 @@ inline void position_t::make_move(move_t move) noexcept {
         // Add promoted piece at to
         occupied_by_type[final_piece.type()].set(to);
         occupied_by_side[side].set(to);
-        st.hash         ^= hashes::hash(final_piece, to);
-        st.nonpawn_hash ^= hashes::hash(final_piece, to);
+        st.hash ^= hashes::hash(final_piece, to);
+        if (final_piece.type() == KNIGHT || final_piece.type() == BISHOP)
+            st.minor_hash ^= hashes::hash(final_piece, to);
+        else
+            st.major_hash ^= hashes::hash(final_piece, to);
 
         // Material delta (replace pawn by prom)
         material[side] += (type_values[final_piece.type()] - type_values[PAWN]);
@@ -700,9 +712,12 @@ inline void position_t::make_move(move_t move) noexcept {
         if (moving.type() == PAWN) {
             st.pawn_hash ^= hashes::hash(moving, from);
             st.pawn_hash ^= hashes::hash(final_piece, to);
-        } else if (moving.type() != KING) {
-            st.nonpawn_hash ^= hashes::hash(moving, from);
-            st.nonpawn_hash ^= hashes::hash(final_piece, to);
+        } else if (moving.type() == KNIGHT || moving.type() == BISHOP) {
+            st.minor_hash ^= hashes::hash(moving, from);
+            st.minor_hash ^= hashes::hash(final_piece, to);
+        } else if (moving.type() == ROOK || moving.type() == QUEEN) {
+            st.major_hash ^= hashes::hash(moving, from);
+            st.major_hash ^= hashes::hash(final_piece, to);
         }
     }
 
@@ -713,29 +728,29 @@ inline void position_t::make_move(move_t move) noexcept {
             board[F1] = WROOK; board[H1] = NO_PIECE;
             occupied_by_type[ROOK].flip("f1h1"_b);
             occupied_by_side[WHITE].flip("f1h1"_b);
-            st.hash         ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
-            st.nonpawn_hash ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
+            st.hash       ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
+            st.major_hash ^= hashes::hash(WROOK, F1) ^ hashes::hash(WROOK, H1);
         } else if (from == E1 && to == C1) {
             // White O-O-O
             board[D1] = WROOK; board[A1] = NO_PIECE;
             occupied_by_type[ROOK].flip("a1d1"_b);
             occupied_by_side[WHITE].flip("d1a1"_b);
-            st.hash         ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
-            st.nonpawn_hash ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
+            st.hash       ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
+            st.major_hash ^= hashes::hash(WROOK, A1) ^ hashes::hash(WROOK, D1);
         } else if (from == E8 && to == G8) {
             // Black O-O
             board[F8] = BROOK; board[H8] = NO_PIECE;
             occupied_by_type[ROOK].flip("f8h8"_b);
             occupied_by_side[BLACK].flip("f8h8"_b);
-            st.hash         ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
-            st.nonpawn_hash ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
+            st.hash       ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
+            st.major_hash ^= hashes::hash(BROOK, F8) ^ hashes::hash(BROOK, H8);
         } else if (from == E8 && to == C8) {
             // Black O-O-O
             board[D8] = BROOK; board[A8] = NO_PIECE;
             occupied_by_type[ROOK].flip("a8d8"_b);
             occupied_by_side[BLACK].flip("d8a8"_b);
-            st.hash         ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
-            st.nonpawn_hash ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
+            st.hash       ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
+            st.major_hash ^= hashes::hash(BROOK, A8) ^ hashes::hash(BROOK, D8);
         }
 
         // Update castle rights on king move
