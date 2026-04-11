@@ -44,12 +44,12 @@ struct correction_t {
     int get(hash_t pawn_h, hash_t minor_h, hash_t major_h,
             side_e side,
             type_e last_type, square last_to) const noexcept {
-        int cv = 10 * (*pawn_table)[side][pawn_h   & (SIZE - 1)]
+        int cv = 15 * (*pawn_table)[side][pawn_h   & (SIZE - 1)]
                + 10 * (*minor_table)[side][minor_h & (SIZE - 1)]
                + 10 * (*major_table)[side][major_h & (SIZE - 1)];
         if (last_type != NO_TYPE)
-            cv += 30 * (*cont_table)[last_type][last_to];
-        return cv / DIV / 15;
+            cv += 20 * (*cont_table)[last_type][last_to];
+        return cv / (DIV * DIV);
     }
 
     // Call after each main-search node (not qsearch).

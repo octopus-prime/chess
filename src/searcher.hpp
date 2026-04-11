@@ -7,6 +7,7 @@
 #include "correction.hpp"
 #include "move_picker.hpp"
 #include <chrono>
+#include <cmath>
 #include <expected>
 
 struct searcher_t {
@@ -91,8 +92,13 @@ struct searcher_t {
     result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
         if (should_stop())
             return {alpha, {}};
-
             
+        stats.nodes++;
+        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
+
+        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
+            return {0, {}};
+
         bool is_pv = (beta - alpha) > 1;
 
         move_t best;
@@ -125,17 +131,11 @@ struct searcher_t {
             depth++;
 
         if (depth == 0) {
-            // stats.nodes--;
+            stats.nodes--;
             int score = (*this)(alpha, beta, height);
             return {score, {}};
         }
 
-        stats.nodes++;
-        stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
-
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
-            return {0, {}};
-        
         int eval = evaluator.evaluate(position, alpha, beta);
         int static_eval = eval;  // raw — preserved for correction update
         {
@@ -161,15 +161,9 @@ struct searcher_t {
         }
 
         
-        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
-        std::span<move_t> moves = position.generate_all_moves(buffer);
-
-        if (moves.empty())
-            return {position.is_check() ? -30000 + height : 0, {}};
-
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        if (depth > 2 && moves.size() > 8 && position.can_null_move()) {
+        if (depth > 2 /*&& moves.size() > 8*/ && position.can_null_move()) {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
@@ -192,20 +186,43 @@ struct searcher_t {
             }
         }
 
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
+        std::span<move_t> moves = position.generate_all_moves(buffer);
+
+        if (moves.empty())
+            return {position.is_check() ? -30000 + height : 0, {}};
+
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
+        size_t move_count = 0;
         bool pv_found = false;
         for (auto&& phase : move_picker_t::ALL) {
             for (auto&& [move, eval] : move_picker(phase)) {
+                ++move_count;
+
+                bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
+                int lmr_depth = depth - 1;
+                // if (depth >= 5 && height >= 3 && move_count > moves.size() / 4
+                //         && is_quiet && !position.is_check() && !position.check(move) && eval.history < 100) {
+                if (depth >= 5 && /*height >= 3 &&*/ move_count > moves.size() / 4
+                        && is_quiet && !position.is_check() && !position.check(move) && eval.history < 100) {
+                    int R = std::max(1, (int)(std::logf(depth) * std::logf(move_count) / 2));
+                    R -= is_pv;
+                    // if (phase == move_picker_t::QUIET_MOVES)
+                    //     R -= (int)(eval.history / 1000);  // high-history moves get smaller R
+                    lmr_depth = std::clamp(depth - 1 - R, 1, depth - 1);
+                }
+
                 position.make_move(move);
+
                 result_t result;
-                if (pv_found) {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, depth - 1, pv_buffer);
-                    if (result.score >= alpha && is_pv) {
+                if (!pv_found && lmr_depth == depth - 1) {
+                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                } else {
+                    result = -(*this)(-alpha - 1, -alpha, height + 1, lmr_depth, pv_buffer);
+                    if (result.score > alpha) {
                         result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                     }
-                } else {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 }
                 position.undo_move(move);
 
