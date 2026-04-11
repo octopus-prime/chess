@@ -155,7 +155,7 @@ struct searcher_t {
 
         // Futility pruning
         {
-            auto margin = depth * (50 + 25 * (best != move_t{}));
+            auto margin = depth * (55 + 25 * (best != move_t{}));
             if (!is_pv && !position.is_check() && depth < 8 && eval - margin >= beta && beta > -29000 && eval < 29000)
                 return {(2 * beta + eval) / 3, {}};
         }
@@ -163,7 +163,7 @@ struct searcher_t {
         
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        if (depth > 2 /*&& moves.size() > 8*/ && position.can_null_move()) {
+        if (depth > 2 && position.can_null_move()) {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
@@ -202,14 +202,10 @@ struct searcher_t {
 
                 bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
                 int lmr_depth = depth - 1;
-                // if (depth >= 5 && height >= 3 && move_count > moves.size() / 4
-                //         && is_quiet && !position.is_check() && !position.check(move) && eval.history < 100) {
-                if (depth >= 5 && /*height >= 3 &&*/ move_count > moves.size() / 4
-                        && is_quiet && !position.is_check() && !position.check(move) && eval.history < 100) {
+                if (depth >= 3 && move_count > 2
+                        && is_quiet && !position.is_check() && !position.check(move)) {
                     int R = std::max(1, (int)(std::logf(depth) * std::logf(move_count) / 2));
                     R -= is_pv;
-                    // if (phase == move_picker_t::QUIET_MOVES)
-                    //     R -= (int)(eval.history / 1000);  // high-history moves get smaller R
                     lmr_depth = std::clamp(depth - 1 - R, 1, depth - 1);
                 }
 

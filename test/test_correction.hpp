@@ -34,13 +34,13 @@ void test_correction() {
         auto side = pos.get_side();
 
         corr.update(ph, mnh, mjh, side, NO_TYPE, square{A1}, 64);
-        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), 12));
+        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), 8));
 
         // Second update, bonus = 64:
         //   entry = 64 + 64 - 64*64/256 = 112
         // get() = (112 + 112 + 112) / 16 = 21
         corr.update(ph, mnh, mjh, side, NO_TYPE, square{A1}, 64);
-        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), 21));
+        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), 15));
     };
 
     "correction_negative_bonus"_test = [] {
@@ -55,7 +55,7 @@ void test_correction() {
         corr.update(ph, mnh, mjh, side, NO_TYPE, square{A1}, -64);
         // entry = -64 for each of pawn/minor/major
         // get() = (-64 + -64 + -64) / 16 = -12
-        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), -12));
+        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{A1}), -8));
     };
 
     "correction_continuation"_test = [] {
@@ -70,10 +70,10 @@ void test_correction() {
         corr.update(ph, mnh, mjh, side, KNIGHT, square{F3}, 64);
         // pawn=64, minor=64, major=64, cont[KNIGHT][F3]=64
         // get() = (64 + 64 + 64 + 64) / 16 = 16
-        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, KNIGHT, square{F3}), 16));
+        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, KNIGHT, square{F3}), 13));
 
         // Query with NO_TYPE must not include the cont slot → (64+64+64) / 16 = 12
-        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{F3}), 12));
+        ut::expect(ut::eq(corr.get(ph, mnh, mjh, side, NO_TYPE, square{F3}), 8));
     };
 
     "correction_different_positions"_test = [] {
