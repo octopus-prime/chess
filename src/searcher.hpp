@@ -90,11 +90,11 @@ struct searcher_t {
     }
 
     result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-        if (should_stop())
-            return {alpha, {}};
-            
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
+
+        if (should_stop())
+            return {alpha, {}};
 
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return {0, {}};
@@ -127,7 +127,7 @@ struct searcher_t {
             }
         }
 
-        if (depth == 0 && position.is_check())
+        if (/*depth == 0 &&*/ position.is_check())
             depth++;
 
         if (depth == 0) {
@@ -163,7 +163,7 @@ struct searcher_t {
         
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        if (depth > 2 && position.can_null_move()) {
+        if (!is_pv && depth > 2 && position.can_null_move()) {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
             result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
@@ -176,7 +176,7 @@ struct searcher_t {
             }
         }
 
-        if (depth >= 7 && best == move_t{}) 
+        if (!is_pv && depth >= 7 && best == move_t{}) 
             depth--;
 
         if (best == move_t{}  && depth > 5) {
@@ -202,11 +202,10 @@ struct searcher_t {
 
                 bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
                 int lmr_depth = depth - 1;
-                if (depth >= 3 && move_count > 2
-                        && is_quiet && !position.is_check() && !position.check(move)) {
-                    int R = std::max(1, (int)(std::logf(depth) * std::logf(move_count) / 2));
+                if (depth >= 3 && move_count > 2 && is_quiet && !position.is_check() && !position.check(move)) {
+                    int R = std::max(1, (int)(std::logf(depth) * std::logf(move_count) * 0.50f +0.50f));
                     R -= is_pv;
-                    lmr_depth = std::clamp(depth - 1 - R, 1, depth - 1);
+                    lmr_depth = std::clamp(depth - 1 - R, depth / 3, depth - 1);
                 }
 
                 position.make_move(move);

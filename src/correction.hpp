@@ -13,7 +13,7 @@
 struct correction_t {
 
     // Table size — power of 2 for fast masking
-    static constexpr size_t SIZE  = 1 << 16;
+    static constexpr size_t SIZE  = 1 << 20;
     // Entry clamp — entries stay in [-LIMIT, +LIMIT]
     static constexpr int    LIMIT = 256;
     // Divisor when applying to eval — max adjustment per table is ±LIMIT/DIV = ±16 cp
@@ -44,12 +44,19 @@ struct correction_t {
     int get(hash_t pawn_h, hash_t minor_h, hash_t major_h,
             side_e side,
             type_e last_type, square last_to) const noexcept {
-        int cv = 15 * (*pawn_table)[side][pawn_h   & (SIZE - 1)]
-               + 10 * (*minor_table)[side][minor_h & (SIZE - 1)]
-               + 10 * (*major_table)[side][major_h & (SIZE - 1)];
-        if (last_type != NO_TYPE)
-            cv += 20 * (*cont_table)[last_type][last_to];
-        return cv / (DIV * DIV);
+                constexpr int pawn_factor = 3;
+                constexpr int minor_factor = 2;
+                constexpr int major_factor = 2;
+                constexpr int cont_factor = 5;
+        int cv = pawn_factor * (*pawn_table)[side][pawn_h   & (SIZE - 1)]
+               + minor_factor * (*minor_table)[side][minor_h & (SIZE - 1)]
+               + major_factor * (*major_table)[side][major_h & (SIZE - 1)];
+        int foo = pawn_factor + minor_factor + major_factor;
+        if (last_type != NO_TYPE) {
+            cv += cont_factor * (*cont_table)[last_type][last_to];
+            foo += cont_factor;
+        }
+        return cv / (DIV * foo);
     }
 
     // Call after each main-search node (not qsearch).
