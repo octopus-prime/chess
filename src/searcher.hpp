@@ -12,6 +12,8 @@
 
 struct searcher_t {
 
+    enum search_e {PV, NON_PV};
+
     struct statistics_t {
         size_t nodes = 0;
         size_t max_height = 0;
@@ -43,7 +45,10 @@ struct searcher_t {
         stats.max_height = 0;
     }
 
-    int operator()(int alpha, int beta, int height) noexcept {
+    template <search_e SearchType>
+    int qsearch(int alpha, int beta, int height) noexcept {
+        constexpr bool is_pv = SearchType == PV;
+
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
@@ -57,26 +62,17 @@ struct searcher_t {
         if (stand_pat > alpha)
             alpha = stand_pat;
 
-        // {
-        //     move_t lm = position.last_move();
-        //     type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
-        //     stand_pat += correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
-        //                                 position.get_side(), lt, lm.to());
-        //     stand_pat = std::clamp(stand_pat, -29000, 29000);
-        // }
-
         std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> buffer;
         std::span<move_t> moves = position.generate_active_moves(buffer);
 
         move_picker_t move_picker{position, history, move_t{}, height, moves};
 
-        for (auto&& type : {move_picker_t::GOOD_CAPTURE_MOVES/*, move_picker_t::QUIET_MOVES*/}) {
-        for (auto&& [move, gain] : move_picker(type)) {
-            if (stand_pat + gain.see + 150 < alpha)
+        for (auto&& [move, gain] : move_picker(move_picker_t::GOOD_CAPTURE_MOVES)) {
+            if (!is_pv && stand_pat + gain.see + 150 < alpha)
                 break;
 
             position.make_move(move);
-            int score = -(*this)(-beta, -alpha, height + 1);
+            int score = -qsearch<SearchType>(-beta, -alpha, height + 1);
             position.undo_move(move);
             
             if (score >= beta)
@@ -84,12 +80,18 @@ struct searcher_t {
             if (score > alpha)
                 alpha = score;
         }
-        }
 
         return alpha;
     }
 
-    result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    // // Add helper functions to detect and adjust mate scores
+    static constexpr int MATE_SCORE = 30000;
+    static constexpr int MATE_BOUND = 29000;
+
+    template <search_e SearchType>
+    result_t search(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+        constexpr bool is_pv = SearchType == PV;
+
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
@@ -99,7 +101,15 @@ struct searcher_t {
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return {0, {}};
 
-        bool is_pv = (beta - alpha) > 1;
+    // Mate distance pruning: don't search for mates we can't achieve
+    {
+        int mate_value_max = MATE_SCORE - height - 1;  // best mate we could give from here
+        int mate_value_min = -MATE_SCORE + height + 1; // best mate we could receive from here
+        
+        if (alpha < mate_value_min) alpha = mate_value_min;
+        if (beta > mate_value_max) beta = mate_value_max;
+        if (alpha >= beta) return {alpha, {}};
+    }
 
         move_t best;
         if (const auto entry = transposition.get(position.hash())) {
@@ -121,18 +131,17 @@ struct searcher_t {
                     break;
                 }
                 if (alpha >= beta) {
-                    pv.front() = best;
-                    return {beta, pv.first(1)};
+                    return {beta, {}};
                 }
             }
         }
 
-        if (/*depth == 0 &&*/ position.is_check())
+        if (/*depth == 0 &&*/ is_pv && position.is_check())
             depth++;
 
         if (depth == 0) {
             stats.nodes--;
-            int score = (*this)(alpha, beta, height);
+            int score = qsearch<SearchType>(alpha, beta, height);
             return {score, {}};
         }
 
@@ -143,44 +152,61 @@ struct searcher_t {
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
             int corr = correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
                                       position.get_side(), lt, lm.to());
-            eval = std::clamp(eval + corr, -29000, 29000);
+            eval = std::clamp(eval + corr * 2, -29000, 29000);
         }
 
         // Razoring
         {
-            auto margin = 500 + 300 * depth * depth;
-            if (!is_pv && !position.is_check() && eval < alpha - margin && alpha < 29000 && eval > -29000)
-                return {(*this)(alpha, beta, height), {}};
+            auto margin = 550 + 350 * depth * depth;
+            if (!is_pv && !position.is_check() && eval < alpha - margin && std::abs(alpha) < MATE_BOUND && std::abs(beta) < MATE_BOUND)
+                return {qsearch<SearchType>(alpha, beta, height), {}};
         }
 
         // Futility pruning
         {
-            auto margin = depth * (55 + 25 * (best != move_t{}));
-            if (!is_pv && !position.is_check() && depth < 8 && eval - margin >= beta && beta > -29000 && eval < 29000)
+            auto margin = depth * (67 + 33 * (best != move_t{}));
+            if (!is_pv && !position.is_check() && depth < 8 && eval - margin >= beta && std::abs(beta) < MATE_BOUND)
                 return {(2 * beta + eval) / 3, {}};
         }
 
         
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
-        if (!is_pv && depth > 2 && position.can_null_move()) {
-            int R = 2 + std::min(3, (depth - 1) / 3);
+        if (!is_pv && depth > 3 && position.can_null_move() && std::abs(beta) < MATE_BOUND) {
+            int R = 2 + std::log2f(depth + 1);
             position.make_null_move();
-            result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
+            result_t result = -search<NON_PV>(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
-            if (result.score >= beta) {
-                result = (*this)(alpha, beta, height, depth - 1 - R, pv_buffer);
-                if (result.score >= beta) {
+            if (result.score >= beta && std::abs(result.score) < MATE_BOUND) {
+                result = search<SearchType>(alpha, beta, height, depth - 1 - R, pv_buffer);
+                if (result.score >= beta && std::abs(result.score) < MATE_BOUND) {
                     return {beta, {}};
                 }
             }
         }
 
-        if (!is_pv && depth >= 7 && best == move_t{}) 
+        // // ProbCut: if a shallow search on high-SEE captures already exceeds a wider
+        // // beta margin we can safely prune this node.
+        // if (!is_pv && depth >= 5 && !position.is_check() && beta < MATE_BOUND && best == move_t{}) {
+        //     int pc_beta = beta + 25 + depth * 25;
+        //     std::array<move_t, position_t::MAX_ACTIVE_MOVES_PER_PLY> pc_buffer;
+        //     std::span<move_t> pc_moves = position.generate_active_moves(pc_buffer);
+        //     for (auto&& pc_move : pc_moves) {
+        //         if (position.see(pc_move) < pc_beta - eval)
+        //             continue;
+        //         position.make_move(pc_move);
+        //         result_t pc_result = -search<NON_PV>(-pc_beta, -pc_beta + 1, height + 1, std::max(1, depth - 4), pv_buffer);
+        //         position.undo_move(pc_move);
+        //         if (pc_result.score >= pc_beta)
+        //             return {pc_beta, {}};
+        //     }
+        // }
+
+        if (!is_pv && depth >= 7 && best == move_t{} && std::abs(alpha) < MATE_BOUND && std::abs(beta) < MATE_BOUND) 
             depth--;
 
         if (best == move_t{}  && depth > 5) {
-            auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
+            auto pv = search<PV>(alpha, beta, height, depth / 2, pv_buffer).pv;
             if (!pv.empty()) {
                 best = pv.front();
             }
@@ -190,7 +216,9 @@ struct searcher_t {
         std::span<move_t> moves = position.generate_all_moves(buffer);
 
         if (moves.empty())
-            return {position.is_check() ? -30000 + height : 0, {}};
+            return {position.is_check() ? -MATE_SCORE + height : 0, {}};
+
+        // depth += !position.is_check() && moves.size() == 1; // extend if only one move
 
         move_picker_t move_picker{position, history, best, height, moves};
         size_t length = 0;
@@ -203,25 +231,35 @@ struct searcher_t {
                 bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
                 int lmr_depth = depth - 1;
                 if (depth >= 3 && move_count > 2 && is_quiet && !position.is_check() && !position.check(move)) {
-                    int R = std::max(1, (int)(std::logf(depth) * std::logf(move_count) * 0.50f +0.50f));
-                    R -= is_pv;
-                    lmr_depth = std::clamp(depth - 1 - R, depth / 3, depth - 1);
+                    int R = int(std::logf(depth + 1) * std::logf(move_count + 1)) / 2;
+                    lmr_depth = std::clamp(depth - 1 - R, depth / 2, depth - 1);
                 }
 
                 position.make_move(move);
 
                 result_t result;
                 if (!pv_found && lmr_depth == depth - 1) {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -search<SearchType>(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                 } else {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, lmr_depth, pv_buffer);
-                    if (result.score > alpha) {
-                        result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    result = -search<NON_PV>(-alpha - 1, -alpha, height + 1, lmr_depth, pv_buffer);
+                    if (result.score > alpha && is_pv) {
+                        result = -search<SearchType>(-beta, -alpha, height + 1, depth - 1, pv_buffer);
                     }
                 }
+
                 position.undo_move(move);
 
                 if (result.score >= beta) {
+
+        if (is_pv && depth > 3) {
+            move_t lm = position.last_move();
+            type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
+            int bonus = (result.score - static_eval) * depth;
+            correction.update(position.pawn_hash(), position.minor_hash(), position.major_hash(),
+                              position.get_side(), lt, lm.to(), bonus);
+        }
+
+
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
                     history.put(move, height, 6 * depth);
                     pv.front() = move;
@@ -246,7 +284,7 @@ struct searcher_t {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
         }
 
-        if (!position.is_check() && depth > 3) {
+        if (is_pv && depth > 3) {
             move_t lm = position.last_move();
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
             int bonus = (alpha - static_eval) * depth;
@@ -339,7 +377,7 @@ struct searcher_t {
         auto t0 = Clock::now();
         // int score = (*this)(-30000, +30000, 0);
         for (int iteration = 1; iteration <= depth; ++iteration) {
-            result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
+            result_t result = search<PV>(-30000, 30000, 0, iteration, pv_buffer);
             // result_t result = aspiration_window(score, iteration, pv_buffer);
             // score = result.score;
             if (should_stop()) {

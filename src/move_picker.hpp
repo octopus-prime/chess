@@ -49,7 +49,7 @@ struct move_picker_t {
         };
 
         auto eval_history = [&](move_t move) -> uint16_t {
-            return 16000 * position.check(move) + history.get(move, height);
+            return 100 * position.check(move) + history.get(move, height);
         };
 
         switch (phase) {

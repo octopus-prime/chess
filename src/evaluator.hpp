@@ -55,7 +55,7 @@ class evaluator {
             const Entry& o = refresh(position, ~position.get_side());
             // return nnue.evaluate(t, o, position.by().size());
             const std::int32_t score = nnue.evaluate(t, o, position.by().size());
-            constexpr auto f = 8;
+            constexpr auto f = 5;
             return (score / f) * f;
         }
     };
@@ -68,13 +68,14 @@ public:
     }
 
     std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {
-        constexpr int threshold = 150;
-        int score = small.evaluate(position);
-        int lower = alpha - threshold;
-        int upper = beta + threshold;
-        if (lower < score && score < upper) {
-            score = big.evaluate(position);
-        }
+        // constexpr int threshold = 150;
+        // int score = small.evaluate(position);
+        // int lower = alpha - threshold;
+        // int upper = beta + threshold;
+        // if (lower < score && score < upper) {
+        //     score = big.evaluate(position);
+        // }
+        int score = big.evaluate(position);
         score -= score * position.get_half_move() / 212;     // Damp down the evaluation linearly when shuffling
         return score;
     }
