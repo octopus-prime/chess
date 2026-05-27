@@ -82,14 +82,9 @@ class basic_nnue {
 };
 
 template <>
-basic_nnue<128>::basic_nnue() : basic_nnue{small_nnue_filename} {
-}
-
-template <>
 basic_nnue<3072>::basic_nnue() : basic_nnue{big_nnue_filename} {
 }
 
-using small_nnue = basic_nnue<128>;
 using big_nnue = basic_nnue<3072>;
 
 }  // namespace nnue

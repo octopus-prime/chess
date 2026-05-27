@@ -55,7 +55,7 @@ struct searcher_t {
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return 0;
 
-        int stand_pat = evaluator.evaluate(position, alpha, beta);
+        int stand_pat = evaluator.evaluate(position);
 
         if (stand_pat >= beta)
             return beta;
@@ -145,7 +145,7 @@ struct searcher_t {
             return {score, {}};
         }
 
-        int eval = evaluator.evaluate(position, alpha, beta);
+        int eval = evaluator.evaluate(position);
         int static_eval = eval;  // raw — preserved for correction update
         {
             move_t lm = position.last_move();

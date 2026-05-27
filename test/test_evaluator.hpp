@@ -31,21 +31,19 @@ void test_evaluator() {
     "evaluator"_test = []() {
         position_t position{};
         evaluator evaluator{};
-        int alpha = -30000;
-        int beta = +30000;
 
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 5));
+        ut::expect(ut::eq(evaluator.evaluate(position), 5));
 
         position.make_move("e2e4"_m);
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), -25));
+        ut::expect(ut::eq(evaluator.evaluate(position), -25));
 
         position.make_move("e7e5"_m);
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 5));
+        ut::expect(ut::eq(evaluator.evaluate(position), 5));
 
         position = "1k6/8/8/8/3r4/2P5/8/K7 w - -"sv;
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), -420));
+        ut::expect(ut::eq(evaluator.evaluate(position), -420));
 
         position = "1k6/8/8/8/3r4/2P5/8/K7 b - -"sv;
-        ut::expect(ut::eq(evaluator.evaluate(position, alpha, beta), 560));
+        ut::expect(ut::eq(evaluator.evaluate(position), 560));
     };
 }

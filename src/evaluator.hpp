@@ -60,21 +60,13 @@ class evaluator {
         }
     };
 
-    nnue_evaluator<nnue::small_nnue> small;
     nnue_evaluator<nnue::big_nnue> big;
 
 public:
-    evaluator() : small{}, big{} {
+    evaluator() : big{} {
     }
 
-    std::int32_t evaluate(const position_t& position, int alpha, int beta) const noexcept {
-        // constexpr int threshold = 150;
-        // int score = small.evaluate(position);
-        // int lower = alpha - threshold;
-        // int upper = beta + threshold;
-        // if (lower < score && score < upper) {
-        //     score = big.evaluate(position);
-        // }
+    std::int32_t evaluate(const position_t& position) const noexcept {
         int score = big.evaluate(position);
         score -= score * position.get_half_move() / 212;     // Damp down the evaluation linearly when shuffling
         return score;
