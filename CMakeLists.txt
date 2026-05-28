@@ -27,4 +27,5 @@ add_executable(chess ${CHESS})
 add_executable(chess_test ${CHESS_TEST})
 
 # & 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\llvm-profdata.exe' merge -output=build/foo build/*.profraw
+# & 'C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\x64\bin\llvm-profdata.exe' merge -output=foo *.profraw
 

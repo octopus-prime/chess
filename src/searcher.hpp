@@ -232,7 +232,7 @@ struct searcher_t {
         size_t length = 0;
         size_t move_count = 0;
         bool pv_found = false;
-        std::array<move_t, 64> tried_quiets{};
+        std::array<move_t, position_t::MAX_MOVES_PER_PLY> tried_quiets{};
         int tried_quiet_count = 0;
         for (auto&& phase : move_picker_t::ALL) {
             for (auto&& [move, eval] : move_picker(phase)) {
@@ -272,14 +272,14 @@ struct searcher_t {
 
 
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
+                    auto bonus = static_cast<int16_t>(6 * depth);
                     if (is_true_quiet) {
                         update_killer(move, height);
-                        auto bonus = static_cast<int16_t>(6 * depth);
                         history.put(move, height, bonus);
                         for (int i = 0; i < tried_quiet_count; ++i)
-                            history.put(tried_quiets[i], height, static_cast<int16_t>(-bonus));
+                            history.put(tried_quiets[i], height, static_cast<int16_t>(-depth));
                     } else {
-                        history.put(move, height, static_cast<int16_t>(6 * depth));
+                        history.put(move, height, bonus);
                     }
                     pv.front() = move;
                     return {beta, pv.first(1)};
