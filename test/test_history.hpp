@@ -24,10 +24,10 @@ void test_history() {
 
         for (int i = 0; i < 100; ++i)
             history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 4741));
+        ut::expect(ut::eq(history.get(move, height), 3797));
 
         history.age();
-        ut::expect(ut::eq(history.get(move, height), 474));
+        ut::expect(ut::eq(history.get(move, height), 379));
 
         value = 10;
 

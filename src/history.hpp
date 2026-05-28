@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <type_traits>
 #include <algorithm>
+#include <cstdlib>
 
 struct history_t {
 
@@ -33,7 +34,7 @@ struct history_t {
     }
 
     void age() noexcept {
-        constexpr uint16_t DECAY = 10;
+        constexpr int DECAY = 10;
 
         auto age_butterfly = [](butterfly_entry_t& entry) static {
             for (auto &from : entry)
@@ -71,23 +72,23 @@ struct history_t {
         type_e type = position.at(from).type();
         type_e last_type = position.at(last_to).type();
         side_e side = position.get_side();
-        update(butterfly_per_side_history[side][from][to], value, 64000);
-        update(piece_to_per_side_history[side][type][to], value, 64000);
-        update(continuation_per_side_history[side][last_type][last_to][type][to], value, 64000);
+        update(butterfly_per_side_history[side][from][to], value);
+        update(piece_to_per_side_history[side][type][to], value);
+        update(continuation_per_side_history[side][last_type][last_to][type][to], value);
         if (type == PAWN) {
-            update(pawn_per_side_history[side][from][to], value, 64000);
+            update(pawn_per_side_history[side][from][to], value);
         }
         if (height < LOW_PLY) {
-            update(butterfly_low_ply_history[height][from][to], value, 64000);
-            update(piece_to_low_ply_history[height][type][to], value, 64000);
-            update(continuation_low_ply_history[height][last_type][last_to][type][to], value, 64000);
+            update(butterfly_low_ply_history[height][from][to], value);
+            update(piece_to_low_ply_history[height][type][to], value);
+            update(continuation_low_ply_history[height][last_type][last_to][type][to], value);
             if (type == PAWN) {
-                update(pawn_low_ply_history[height][from][to], value, 64000);
+                update(pawn_low_ply_history[height][from][to], value);
             }
         }
     }
 
-    uint16_t get(move_t move, int height) const noexcept {
+    int32_t get(move_t move, int height) const noexcept {
         move_t last_move = position.last_move();
         square_e from = move.from();
         square_e to = move.to();
@@ -95,14 +96,14 @@ struct history_t {
         type_e type = position.at(from).type();
         type_e last_type = position.at(last_to).type();
         side_e side = position.get_side();
-        uint32_t score = 0;
+        int32_t score = 0;
         score += butterfly_per_side_history[side][from][to];
-        score += pawn_per_side_history[side][from][to];
+        if (type == PAWN) score += pawn_per_side_history[side][from][to];
         score += piece_to_per_side_history[side][type][to];
         score += continuation_per_side_history[side][last_type][last_to][type][to];
         if (height < LOW_PLY) {
             score += butterfly_low_ply_history[height][from][to];
-            score += pawn_low_ply_history[height][from][to];
+            if (type == PAWN) score += pawn_low_ply_history[height][from][to];
             score += piece_to_low_ply_history[height][type][to];
             score += continuation_low_ply_history[height][last_type][last_to][type][to];
         }
@@ -112,9 +113,9 @@ struct history_t {
 private:
     constexpr static inline size_t LOW_PLY = 4;
 
-    using butterfly_entry_t = std::array<std::array<uint16_t, SQUARE_MAX>, SQUARE_MAX>;
-    using piece_to_entry_t = std::array<std::array<uint16_t, SQUARE_MAX>, TYPE_MAX - 1>;
-    using continuation_entry_t = std::array<std::array<std::array<std::array<uint16_t, SQUARE_MAX>, TYPE_MAX - 1>, SQUARE_MAX>, TYPE_MAX - 1>;
+    using butterfly_entry_t = std::array<std::array<int16_t, SQUARE_MAX>, SQUARE_MAX>;
+    using piece_to_entry_t = std::array<std::array<int16_t, SQUARE_MAX>, TYPE_MAX - 1>;
+    using continuation_entry_t = std::array<std::array<std::array<std::array<int16_t, SQUARE_MAX>, TYPE_MAX - 1>, SQUARE_MAX>, TYPE_MAX - 1>;
 
     position_t& position;
     std::vector<butterfly_entry_t> butterfly_per_side_history;
@@ -126,8 +127,10 @@ private:
     std::vector<continuation_entry_t> continuation_per_side_history;
     std::vector<continuation_entry_t> continuation_low_ply_history;
 
-    static void update(uint16_t& entry, uint16_t bonus, uint16_t factor) noexcept {
-        uint16_t clampedBonus = std::min<uint16_t>(bonus, factor);
-        entry += clampedBonus - entry * clampedBonus / factor;
+    constexpr static inline int16_t HISTORY_MAX = 16000;
+
+    static void update(int16_t& entry, int16_t bonus) noexcept {
+        int32_t b = bonus;
+        entry += static_cast<int16_t>(b - int32_t(entry) * std::abs(b) / HISTORY_MAX);
     }
 };

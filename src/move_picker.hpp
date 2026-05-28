@@ -9,21 +9,23 @@ struct move_picker_t {
     enum phase_e {
         TT_MOVES,
         GOOD_CAPTURE_MOVES,
+        KILLER_MOVES,
         QUIET_MOVES,
         BAD_CAPTURE_MOVES
     };
 
     struct eval_t {
         int16_t see;
-        uint16_t history;
+        int32_t history;
 
         auto operator<=>(const eval_t& other) const noexcept = default;
     };
 
-    constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
+    constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, KILLER_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
 
-    move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> moves) noexcept
-        : position{position}, history{history}, best{best}, height{height}, moves{moves}, offset{0} {
+    move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> moves,
+                  std::array<move_t, 2> killers = {move_t{}, move_t{}}) noexcept
+        : position{position}, history{history}, best{best}, height{height}, moves{moves}, killers{killers}, offset{0} {
     }
 
     auto operator()(phase_e phase) noexcept {
@@ -48,7 +50,7 @@ struct move_picker_t {
             return position.see(move);
         };
 
-        auto eval_history = [&](move_t move) -> uint16_t {
+        auto eval_history = [&](move_t move) -> int32_t {
             return 100 * position.check(move) + history.get(move, height);
         };
 
@@ -64,6 +66,15 @@ struct move_picker_t {
                 auto tail = std::ranges::partition(remaining_zip, [](int16_t see) static { return see > 0; }, get_see);
                 auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
                 std::ranges::sort(result, std::greater<>{}, get_see);
+                offset += std::distance(remaining_zip.begin(), tail.begin());
+                return result;
+            }
+            case KILLER_MOVES: {
+                auto is_quiet_killer = [&](const auto& t) -> bool {
+                    return get_see(t) == 0 && (get_move(t) == killers[0] || get_move(t) == killers[1]);
+                };
+                auto tail = std::ranges::partition(remaining_zip, is_quiet_killer);
+                auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
                 offset += std::distance(remaining_zip.begin(), tail.begin());
                 return result;
             }
@@ -89,6 +100,7 @@ private:
     move_t best;
     int height;
     std::span<move_t> moves;
+    std::array<move_t, 2> killers;
     std::size_t offset;
     std::array<eval_t, position_t::MAX_MOVES_PER_PLY> evals;
 };

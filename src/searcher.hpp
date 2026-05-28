@@ -37,10 +37,21 @@ struct searcher_t {
     std::function<bool()> should_stop;
     statistics_t stats;
 
+    constexpr static int MAX_HEIGHT = 128;
+    std::array<std::array<move_t, 2>, MAX_HEIGHT> killers{};
+
+    void update_killer(move_t move, int height) noexcept {
+        if (height < MAX_HEIGHT && killers[height][0] != move) {
+            killers[height][1] = killers[height][0];
+            killers[height][0] = move;
+        }
+    }
+
     void clear() noexcept {
         transposition.clear();
         history.clear();
         correction.clear();
+        killers = {};
         stats.nodes = 0;
         stats.max_height = 0;
     }
@@ -178,10 +189,7 @@ struct searcher_t {
             result_t result = -search<NON_PV>(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
             if (result.score >= beta && std::abs(result.score) < MATE_BOUND) {
-                result = search<SearchType>(alpha, beta, height, depth - 1 - R, pv_buffer);
-                if (result.score >= beta && std::abs(result.score) < MATE_BOUND) {
-                    return {beta, {}};
-                }
+                return {beta, {}};
             }
         }
 
@@ -220,19 +228,22 @@ struct searcher_t {
 
         // depth += !position.is_check() && moves.size() == 1; // extend if only one move
 
-        move_picker_t move_picker{position, history, best, height, moves};
+        move_picker_t move_picker{position, history, best, height, moves, killers[height]};
         size_t length = 0;
         size_t move_count = 0;
         bool pv_found = false;
+        std::array<move_t, 64> tried_quiets{};
+        int tried_quiet_count = 0;
         for (auto&& phase : move_picker_t::ALL) {
             for (auto&& [move, eval] : move_picker(phase)) {
                 ++move_count;
 
-                bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
+                bool is_quiet = phase == move_picker_t::KILLER_MOVES || phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
+                bool is_true_quiet = phase == move_picker_t::KILLER_MOVES || phase == move_picker_t::QUIET_MOVES;
                 int lmr_depth = depth - 1;
                 if (depth >= 3 && move_count > 2 && is_quiet && !position.is_check() && !position.check(move)) {
                     int R = int(std::logf(depth + 1) * std::logf(move_count + 1)) / 2;
-                    lmr_depth = std::clamp(depth - 1 - R, depth / 2, depth - 1);
+                    lmr_depth = std::clamp(depth - 1 - R, 1, depth - 1);
                 }
 
                 position.make_move(move);
@@ -261,7 +272,15 @@ struct searcher_t {
 
 
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                    history.put(move, height, 6 * depth);
+                    if (is_true_quiet) {
+                        update_killer(move, height);
+                        auto bonus = static_cast<int16_t>(6 * depth);
+                        history.put(move, height, bonus);
+                        for (int i = 0; i < tried_quiet_count; ++i)
+                            history.put(tried_quiets[i], height, static_cast<int16_t>(-bonus));
+                    } else {
+                        history.put(move, height, static_cast<int16_t>(6 * depth));
+                    }
                     pv.front() = move;
                     return {beta, pv.first(1)};
                 }
@@ -274,12 +293,15 @@ struct searcher_t {
                     std::ranges::copy(result.pv, pv.begin() + 1);
                     length = 1 + result.pv.size();
                 }
+
+                if (is_true_quiet && tried_quiet_count < static_cast<int>(tried_quiets.size()))
+                    tried_quiets[tried_quiet_count++] = move;
             }
         }
 
         if (pv_found) {
             transposition.put(position.hash(), best, alpha, flag_t::EXACT, depth);
-            history.put(best, height, depth);
+            history.put(best, height, static_cast<int16_t>(depth));
         } else {
             transposition.put(position.hash(), best, alpha, flag_t::UPPER, depth);
         }
@@ -295,50 +317,27 @@ struct searcher_t {
         return {alpha, pv.first(length)};
     }
 
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     const int ASPIRATION_DELTA = 50;
-    //     int window_alpha = score - ASPIRATION_DELTA;
-    //     int window_beta = score + ASPIRATION_DELTA;
-
-    //     result_t result = (*this)(window_alpha, window_beta, 0, depth, pv);
-    //     if (result.score <= window_alpha || result.score >= window_beta) {
-    //         result = (*this)(-30000, window_beta, 0, depth, pv);
-    //     } else if (result.score >= window_beta) {
-    //         result = (*this)(window_alpha, 30000, 0, depth, pv);
-    //     }
-    //     return result;
-    // }
-
-    // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
-    //     constexpr int MATE = 30000;
-    //     int delta = 25; // initial half-window; tune if desired (e.g., 16 + 4*depth)
-
-    //     int alpha = std::max(-MATE, score - delta);
-    //     int beta  = std::min(+MATE, score + delta);
-
-    //     result_t result = (*this)(alpha, beta, 0, depth, pv);
-
-    //     std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
-    //     while (result.score <= alpha || result.score >= beta) {
-    //         if (should_stop()) break;
-    //         delta <<= 2;
-    //         if (result.score <= alpha)
-    //             alpha = std::max(-MATE, score - delta);
-    //         else
-    //             beta = std::min(+MATE, score + delta);
-    //         result_t result2 = (*this)(alpha, beta, 0, depth, pv_buffer);
-    //         if (!result2.pv.empty()) {
-    //             result = result_t{result2.score, pv.first(result2.pv.size())};
-    //             std::ranges::copy(result2.pv, pv.begin());
-    //         } else {
-    //             result = {result2.score, result.pv};
-    //         }
-    //         if (alpha <= -MATE || beta >= MATE)
-    //             break; // full window reached
-    //     }
-
-    //     return result;
-    // }
+    result_t aspiration_window(int prev_score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+        constexpr int MATE = 30000;
+        int delta = 25;
+        int alpha = std::max(-MATE, prev_score - delta);
+        int beta  = std::min(+MATE, prev_score + delta);
+        std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buf;
+        result_t best{prev_score, {}};
+        while (true) {
+            result_t r = search<PV>(alpha, beta, 0, depth, pv_buf);
+            if (!r.pv.empty()) {
+                std::ranges::copy(r.pv, pv.begin());
+                best = {r.score, pv.first(r.pv.size())};
+            }
+            if (should_stop()) return best;
+            if (r.score > alpha && r.score < beta) return best;
+            delta <<= 1;
+            if (r.score <= alpha) alpha = std::max(-MATE, prev_score - delta);
+            if (r.score >= beta)  beta  = std::min(+MATE, prev_score + delta);
+            if (alpha <= -MATE && beta >= MATE) return best;
+        }
+    }
 
     enum unexpected_e : uint8_t { insufficient_material, rule50, repetition, checkmate, stalemate };
 
@@ -373,17 +372,18 @@ struct searcher_t {
         }
 
         move_t best{};
+        int score = 0;
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
         auto t0 = Clock::now();
-        // int score = (*this)(-30000, +30000, 0);
         for (int iteration = 1; iteration <= depth; ++iteration) {
-            result_t result = search<PV>(-30000, 30000, 0, iteration, pv_buffer);
-            // result_t result = aspiration_window(score, iteration, pv_buffer);
-            // score = result.score;
+            result_t result = (iteration < 5)
+                ? search<PV>(-30000, 30000, 0, iteration, pv_buffer)
+                : aspiration_window(score, iteration, pv_buffer);
             if (should_stop()) {
                 break;
             }
-            best = result.pv.front();
+            score = result.score;
+            if (!result.pv.empty()) best = result.pv.front();
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
 
