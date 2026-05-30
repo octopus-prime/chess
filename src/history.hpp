@@ -97,14 +97,18 @@ struct history_t {
         side_e side = position.get_side();
         uint32_t score = 0;
         score += butterfly_per_side_history[side][from][to];
-        score += pawn_per_side_history[side][from][to];
         score += piece_to_per_side_history[side][type][to];
         score += continuation_per_side_history[side][last_type][last_to][type][to];
+        if (type == PAWN) {
+            score += pawn_per_side_history[side][from][to];
+        }
         if (height < LOW_PLY) {
             score += butterfly_low_ply_history[height][from][to];
-            score += pawn_low_ply_history[height][from][to];
             score += piece_to_low_ply_history[height][type][to];
             score += continuation_low_ply_history[height][last_type][last_to][type][to];
+            if (type == PAWN) {
+                score += pawn_low_ply_history[height][from][to];
+            }
         }
         return score / 16;
     }
