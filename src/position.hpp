@@ -191,6 +191,11 @@ struct position_t {
         return states.back().last_move;
     }
 
+    move_t last_move(size_t n) const noexcept {
+        if (states.size() <= n) return move_t{};
+        return states[states.size() - 1 - n].last_move;
+    }
+
     bool is_check() const noexcept {
         return !states.back().checkers.empty();
     }

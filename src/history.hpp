@@ -18,7 +18,9 @@ struct history_t {
         piece_to_per_side_history(SIDE_MAX), 
         piece_to_low_ply_history(LOW_PLY), 
         continuation_per_side_history(SIDE_MAX), 
-        continuation_low_ply_history(LOW_PLY) {
+        continuation_low_ply_history(LOW_PLY),
+        continuation2_per_side_history(SIDE_MAX),
+        continuation2_low_ply_history(LOW_PLY) {
     }
 
     void clear() noexcept {
@@ -30,6 +32,8 @@ struct history_t {
         std::ranges::fill(piece_to_low_ply_history, piece_to_entry_t{});
         std::ranges::fill(continuation_per_side_history, continuation_entry_t{});
         std::ranges::fill(continuation_low_ply_history, continuation_entry_t{});
+        std::ranges::fill(continuation2_per_side_history, continuation_entry_t{});
+        std::ranges::fill(continuation2_low_ply_history, continuation_entry_t{});
     }
 
     void age() noexcept {
@@ -61,19 +65,27 @@ struct history_t {
         std::ranges::for_each(piece_to_low_ply_history, age_piece_to);
         std::ranges::for_each(continuation_per_side_history, age_continuation);
         std::ranges::for_each(continuation_low_ply_history, age_continuation);
+        std::ranges::for_each(continuation2_per_side_history, age_continuation);
+        std::ranges::for_each(continuation2_low_ply_history, age_continuation);
     }
 
     void put(move_t move, int height, int16_t value) noexcept {
         move_t last_move = position.last_move();
+        move_t last_move2 = position.last_move(1);
         square_e from = move.from();
         square_e to = move.to();
         square_e last_to = last_move.to();
+        square_e last_to2 = last_move2.to();
         type_e type = position.at(from).type();
         type_e last_type = position.at(last_to).type();
+        type_e last_type2 = position.at(last_to2).type();
         side_e side = position.get_side();
         update(butterfly_per_side_history[side][from][to], value, 64000);
         update(piece_to_per_side_history[side][type][to], value, 64000);
         update(continuation_per_side_history[side][last_type][last_to][type][to], value, 64000);
+        if (last_move2 != move_t{}) {
+            update(continuation2_per_side_history[side][last_type2][last_to2][type][to], value, 64000);
+        }
         if (type == PAWN) {
             update(pawn_per_side_history[side][from][to], value, 64000);
         }
@@ -81,6 +93,9 @@ struct history_t {
             update(butterfly_low_ply_history[height][from][to], value, 64000);
             update(piece_to_low_ply_history[height][type][to], value, 64000);
             update(continuation_low_ply_history[height][last_type][last_to][type][to], value, 64000);
+            if (last_move2 != move_t{}) {
+                update(continuation2_low_ply_history[height][last_type2][last_to2][type][to], value, 64000);
+            }
             if (type == PAWN) {
                 update(pawn_low_ply_history[height][from][to], value, 64000);
             }
@@ -89,28 +104,41 @@ struct history_t {
 
     uint16_t get(move_t move, int height) const noexcept {
         move_t last_move = position.last_move();
+        move_t last_move2 = position.last_move(1);
         square_e from = move.from();
         square_e to = move.to();
         square_e last_to = last_move.to();
+        square_e last_to2 = last_move2.to();
         type_e type = position.at(from).type();
         type_e last_type = position.at(last_to).type();
+        type_e last_type2 = position.at(last_to2).type();
         side_e side = position.get_side();
         uint32_t score = 0;
         score += butterfly_per_side_history[side][from][to];
         score += piece_to_per_side_history[side][type][to];
-        score += continuation_per_side_history[side][last_type][last_to][type][to];
+        if (last_move != move_t{}) {
+            score += continuation_per_side_history[side][last_type][last_to][type][to];
+        }
+        if (last_move2 != move_t{}) {
+            score += continuation2_per_side_history[side][last_type2][last_to2][type][to];
+        }
         if (type == PAWN) {
             score += pawn_per_side_history[side][from][to];
         }
         if (height < LOW_PLY) {
             score += butterfly_low_ply_history[height][from][to];
             score += piece_to_low_ply_history[height][type][to];
-            score += continuation_low_ply_history[height][last_type][last_to][type][to];
+            if (last_move != move_t{}) {
+                score += continuation_low_ply_history[height][last_type][last_to][type][to];
+            }
+            if (last_move2 != move_t{}) {
+                score += continuation2_low_ply_history[height][last_type2][last_to2][type][to];
+            }
             if (type == PAWN) {
                 score += pawn_low_ply_history[height][from][to];
             }
         }
-        return score / 16;
+        return score / 20;
     }
 
 private:
@@ -129,6 +157,8 @@ private:
     std::vector<piece_to_entry_t> piece_to_low_ply_history;
     std::vector<continuation_entry_t> continuation_per_side_history;
     std::vector<continuation_entry_t> continuation_low_ply_history;
+    std::vector<continuation_entry_t> continuation2_per_side_history;
+    std::vector<continuation_entry_t> continuation2_low_ply_history;
 
     static void update(uint16_t& entry, uint16_t bonus, uint16_t factor) noexcept {
         uint16_t clampedBonus = std::min<uint16_t>(bonus, factor);
