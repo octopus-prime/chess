@@ -152,7 +152,7 @@ struct searcher_t {
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
             int corr = correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
                                       position.get_side(), lt, lm.to());
-            eval = std::clamp(eval + corr * 2, -29000, 29000);
+            eval = std::clamp(eval + corr * 2, -MATE_BOUND, MATE_BOUND);
         }
 
         // Razoring
@@ -173,7 +173,7 @@ struct searcher_t {
         std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
         if (!is_pv && depth > 3 && position.can_null_move() && std::abs(beta) < MATE_BOUND) {
-            int R = 2 + std::log2f(depth + 1);
+            int R = 1 + std::bit_width<unsigned int>(depth) * 4 / 3;
             position.make_null_move();
             result_t result = -search<NON_PV>(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
             position.undo_null_move();
@@ -231,7 +231,7 @@ struct searcher_t {
                 bool is_quiet = phase == move_picker_t::QUIET_MOVES || phase == move_picker_t::BAD_CAPTURE_MOVES;
                 int lmr_depth = depth - 1;
                 if (depth >= 3 && move_count > 2 && is_quiet && !position.is_check() && !position.check(move)) {
-                    int R = int(std::logf(depth + 1) * std::logf(move_count + 1)) / 2;
+                    int R = ((std::bit_width<unsigned int>(depth + 1) - 1) * (std::bit_width<unsigned int>(move_count + 1) - 1)) / (3 + is_pv);
                     lmr_depth = std::clamp(depth - 1 - R, depth / 2, depth - 1);
                 }
 

@@ -54,7 +54,7 @@ struct move_picker_t {
 
         switch (phase) {
             case TT_MOVES: {
-                auto tail = std::ranges::partition(remaining_zip, [&](move_t move) { return move == best; }, get_move);
+                auto tail = std::ranges::partition(remaining_zip, [this](move_t move) { return move == best; }, get_move);
                 auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
                 offset += std::distance(remaining_zip.begin(), tail.begin());
                 return result;

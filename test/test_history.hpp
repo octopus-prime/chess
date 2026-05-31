@@ -17,17 +17,17 @@ void test_history() {
         ut::expect(ut::eq(history.get(move, height), 0));
 
         history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 30));
+        ut::expect(ut::eq(history.get(move, height), 20));
 
         history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 60));
+        ut::expect(ut::eq(history.get(move, height), 40));
 
         for (int i = 0; i < 100; ++i)
             history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 2844));
+        ut::expect(ut::eq(history.get(move, height), 1896));
 
         history.age();
-        ut::expect(ut::eq(history.get(move, height), 284));
+        ut::expect(ut::eq(history.get(move, height), 189));
 
         value = 10;
 
@@ -35,17 +35,17 @@ void test_history() {
         ut::expect(ut::eq(history.get(move, height), 0));
 
         history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 3));
+        ut::expect(ut::eq(history.get(move, height), 2));
 
         history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 6));
+        ut::expect(ut::eq(history.get(move, height), 4));
 
         for (int i = 0; i < 100; ++i)
             history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 306));
+        ut::expect(ut::eq(history.get(move, height), 204));
 
         history.age();
-        ut::expect(ut::eq(history.get(move, height), 30));
+        ut::expect(ut::eq(history.get(move, height), 20));
 
         height = 10;
 
@@ -56,14 +56,14 @@ void test_history() {
         ut::expect(ut::eq(history.get(move, height), 1));
 
         history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 3));
+        ut::expect(ut::eq(history.get(move, height), 2));
 
         for (int i = 0; i < 100; ++i)
             history.put(move, height, value);
-        ut::expect(ut::eq(history.get(move, height), 153));
+        ut::expect(ut::eq(history.get(move, height), 102));
 
         history.age();
-        ut::expect(ut::eq(history.get(move, height), 15));
+        ut::expect(ut::eq(history.get(move, height), 10));
 
         move = "g1f3"_m;
 
