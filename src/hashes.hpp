@@ -10,8 +10,7 @@ struct hashes {
 
     static hash_t generate() noexcept {
         static std::mt19937_64 engine(-1ull);
-        static std::uniform_int_distribution<hash_t> distribution;
-        return distribution(engine);
+        return engine();
     }
 
     using lookup_t = std::array<std::array<hash_t , SQUARE_MAX>, PIECE_MAX>;

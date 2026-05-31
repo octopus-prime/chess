@@ -63,7 +63,7 @@ struct move_picker_t {
                 for (auto&& [move, eval] : remaining_zip) { eval.see = eval_see(move); }
                 auto tail = std::ranges::partition(remaining_zip, [](int16_t see) static { return see > 0; }, get_see);
                 auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
-                std::ranges::sort(result, std::greater<>{}, get_see);
+                std::ranges::sort(result, std::greater<>{}, [](const auto& t) static { return std::pair{std::get<1>(t).see, static_cast<uint16_t>(std::get<0>(t))}; });
                 offset += std::distance(remaining_zip.begin(), tail.begin());
                 return result;
             }
@@ -71,13 +71,13 @@ struct move_picker_t {
                 auto tail = std::ranges::partition(remaining_zip, [](int16_t see) static { return see == 0; }, get_see);
                 auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
                 for (auto&& [move, eval] : result) { eval.history = eval_history(move); }
-                std::ranges::sort(result, std::greater<>{}, get_history);
+                std::ranges::sort(result, std::greater<>{}, [](const auto& t) static { return std::pair{std::get<1>(t).history, static_cast<uint16_t>(std::get<0>(t))}; });
                 offset += std::distance(remaining_zip.begin(), tail.begin());
                 return result;
             }
             case BAD_CAPTURE_MOVES: {
                 auto result = std::ranges::subrange(remaining_zip.begin(), remaining_zip.end());
-                std::ranges::sort(result, std::greater<>{}, get_see);
+                std::ranges::sort(result, std::greater<>{}, [](const auto& t) static { return std::pair{std::get<1>(t).see, static_cast<uint16_t>(std::get<0>(t))}; });
                 return result;
             }
         }
