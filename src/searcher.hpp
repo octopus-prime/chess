@@ -15,17 +15,8 @@ struct searcher_t {
     struct statistics_t {
         size_t nodes = 0;
         size_t max_height = 0;
+        size_t next_test = 1000;
     };
-
-    struct result_t {
-        std::int32_t score;
-        std::span<move_t> pv;
-
-        result_t operator-() const noexcept {
-            return {-score, pv};
-        }
-    };
-
 
     position_t& position;
     transposition_t& transposition;
@@ -47,7 +38,7 @@ struct searcher_t {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
-        if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
+        if (position.is_no_material())// || position.is_50_moves_rule() || position.is_3_fold_repetition())
             return 0;
 
         int stand_pat = evaluator.evaluate(position, alpha, beta);
@@ -89,15 +80,18 @@ struct searcher_t {
         return alpha;
     }
 
-    result_t operator()(int alpha, int beta, int height, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
+    int operator()(int alpha, int beta, int height, int depth) noexcept {
         stats.nodes++;
         stats.max_height = std::max(stats.max_height, static_cast<size_t>(height));
 
-        if (should_stop())
-            return {alpha, {}};
+        if (stats.nodes > stats.next_test) {
+            if (should_stop())
+                return alpha;
+            stats.next_test += 1000;
+        }
 
         if (position.is_no_material() || position.is_50_moves_rule() || position.is_3_fold_repetition())
-            return {0, {}};
+            return 0;
 
         bool is_pv = (beta - alpha) > 1;
 
@@ -107,8 +101,7 @@ struct searcher_t {
             if (entry->depth >= depth) {
                 switch (entry->flag) {
                 case flag_t::EXACT:
-                    pv.front() = best;
-                    return {entry->score, pv.first(1)};
+                    return entry->score;
                 case flag_t::LOWER:
                     if (entry->score > alpha)
                         alpha = entry->score;
@@ -121,8 +114,7 @@ struct searcher_t {
                     break;
                 }
                 if (alpha >= beta) {
-                    pv.front() = best;
-                    return {beta, pv.first(1)};
+                    return beta;
                 }
             }
         }
@@ -132,8 +124,7 @@ struct searcher_t {
 
         if (depth == 0) {
             stats.nodes--;
-            int score = (*this)(alpha, beta, height);
-            return {score, {}};
+            return (*this)(alpha, beta, height);
         }
 
         int eval = evaluator.evaluate(position, alpha, beta);
@@ -150,28 +141,25 @@ struct searcher_t {
         {
             auto margin = 500 + 300 * depth * depth;
             if (!is_pv && !position.is_check() && eval < alpha - margin && alpha < 29000 && eval > -29000)
-                return {(*this)(alpha, beta, height), {}};
+                return (*this)(alpha, beta, height);
         }
 
         // Futility pruning
         {
             auto margin = depth * (55 + 25 * (best != move_t{}));
             if (!is_pv && !position.is_check() && depth < 8 && eval - margin >= beta && beta > -29000 && eval < 29000)
-                return {(2 * beta + eval) / 3, {}};
+                return (2 * beta + eval) / 3;
         }
-
-        
-        std::array<move_t, position_t::MAX_MOVES_PER_GAME> pv_buffer;
 
         if (!is_pv && depth > 2 && position.can_null_move()) {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
-            result_t result = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R, pv_buffer);
+            int score = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R);
             position.undo_null_move();
-            if (result.score >= beta) {
-                result = (*this)(alpha, beta, height, depth - 1 - R, pv_buffer);
-                if (result.score >= beta) {
-                    return {beta, {}};
+            if (score >= beta) {
+                score = (*this)(alpha, beta, height, depth - 1 - R);
+                if (score >= beta) {
+                    return beta;
                 }
             }
         }
@@ -180,9 +168,9 @@ struct searcher_t {
             depth--;
 
         if (best == move_t{}  && depth > 5) {
-            auto pv = (*this)(alpha, beta, height, depth / 2, pv_buffer).pv;
-            if (!pv.empty()) {
-                best = pv.front();
+            (*this)(alpha, beta, height, depth / 2);
+            if (const auto entry = transposition.get(position.hash())) {
+                best = entry->move;
             }
         }
 
@@ -190,10 +178,9 @@ struct searcher_t {
         std::span<move_t> moves = position.generate_all_moves(buffer);
 
         if (moves.empty())
-            return {position.is_check() ? -30000 + height : 0, {}};
+            return position.is_check() ? -30000 + height : 0;
 
         move_picker_t move_picker{position, history, best, height, moves};
-        size_t length = 0;
         size_t move_count = 0;
         bool pv_found = false;
         for (auto&& phase : move_picker_t::ALL) {
@@ -210,31 +197,27 @@ struct searcher_t {
 
                 position.make_move(move);
 
-                result_t result;
+                int score;
                 if (!pv_found && lmr_depth == depth - 1) {
-                    result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    score = -(*this)(-beta, -alpha, height + 1, depth - 1);
                 } else {
-                    result = -(*this)(-alpha - 1, -alpha, height + 1, lmr_depth, pv_buffer);
-                    if (result.score > alpha) {
-                        result = -(*this)(-beta, -alpha, height + 1, depth - 1, pv_buffer);
+                    score = -(*this)(-alpha - 1, -alpha, height + 1, lmr_depth);
+                    if (score > alpha) {
+                        score = -(*this)(-beta, -alpha, height + 1, depth - 1);
                     }
                 }
                 position.undo_move(move);
 
-                if (result.score >= beta) {
+                if (score >= beta) {
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
                     history.put(move, height, 6 * depth);
-                    pv.front() = move;
-                    return {beta, pv.first(1)};
+                    return beta;
                 }
 
-                if (result.score > alpha) {
-                    alpha = result.score;
+                if (score > alpha) {
+                    alpha = score;
                     best = move;
                     pv_found = true;
-                    pv.front() = move;
-                    std::ranges::copy(result.pv, pv.begin() + 1);
-                    length = 1 + result.pv.size();
                 }
             }
         }
@@ -254,7 +237,24 @@ struct searcher_t {
                               position.get_side(), lt, lm.to(), bonus);
         }
 
-        return {alpha, pv.first(length)};
+        return alpha;
+    }
+
+    std::span<move_t> extract_pv(std::span<move_t, position_t::MAX_MOVES_PER_GAME> buffer, int max_length) noexcept {
+        size_t length = 0;
+        while (static_cast<int>(length) < max_length) {
+            const auto entry = transposition.get(position.hash());
+            if (!entry || entry->move == move_t{})
+                break;
+
+            buffer[length++] = entry->move;
+            position.make_move(entry->move);
+        }
+
+        for (size_t i = length; i-- > 0;)
+            position.undo_move(buffer[i]);
+
+        return buffer.first(length);
     }
 
     // result_t aspiration_window(int score, int depth, std::span<move_t, position_t::MAX_MOVES_PER_GAME> pv) noexcept {
@@ -339,30 +339,30 @@ struct searcher_t {
         auto t0 = Clock::now();
         // int score = (*this)(-30000, +30000, 0);
         for (int iteration = 1; iteration <= depth; ++iteration) {
-            result_t result = (*this)(-30000, 30000, 0, iteration, pv_buffer);
-            // result_t result = aspiration_window(score, iteration, pv_buffer);
-            // score = result.score;
+            int score = (*this)(-30000, 30000, 0, iteration);
+            // int score = aspiration_window(score, iteration);
             if (should_stop()) {
                 break;
             }
-            best = result.pv.front();
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
+            std::span<move_t> pv = extract_pv(pv_buffer, iteration);
+            best = pv.front();
 
             char buffer[1024];
 
-            if (result.score < -29000 || result.score > 29000) {
+            if (score < -29000 || score > 29000) {
                 constexpr int MATE_SCORE = 30000;
-                int plies = MATE_SCORE - std::abs(result.score);
+                int plies = MATE_SCORE - std::abs(score);
                 int mate_in = (plies + 1) / 2;
-                if (result.score < 0)
+                if (score < 0)
                     mate_in = -mate_in;
                 char* out = std::format_to(buffer, "info depth {} seldepth {} score mate {:+} nodes {} nps {} hashfull {} time {} pv {}\n", 
-                    iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                    iteration, stats.max_height, mate_in, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), pv);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             } else {
                 char* out = std::format_to(buffer, "info depth {} seldepth {} score cp {:+} nodes {} nps {} hashfull {} time {} pv {}\n",
-                    iteration, stats.max_height, result.score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), result.pv);
+                    iteration, stats.max_height, score, stats.nodes, size_t(stats.nodes / time), transposition.full(), size_t(time * 1000), pv);
                 std::fwrite(buffer, sizeof(char), out - buffer, stdout);
             }
 
