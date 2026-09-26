@@ -10,6 +10,7 @@ struct move_picker_t {
         TT_MOVES,
         GOOD_CAPTURE_MOVES,
         NEUTRAL_CAPTURE_MOVES,
+        KILLER_MOVES,
         QUIET_MOVES,
         BAD_CAPTURE_MOVES
     };
@@ -26,10 +27,12 @@ struct move_picker_t {
         eval_t eval;
     };
 
-    constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, NEUTRAL_CAPTURE_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
+        constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, NEUTRAL_CAPTURE_MOVES, KILLER_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
 
-    move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> input_moves) noexcept
-        : position{position}, history{history}, best{best}, height{height}, input_moves{input_moves}, moves{entries.data(), input_moves.size()}, offset{0} {
+        move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> input_moves,
+                                    std::array<move_t, 2> killer_moves = {move_t{}, move_t{}}) noexcept
+                : position{position}, history{history}, best{best}, height{height}, input_moves{input_moves}, killer_moves{killer_moves},
+                    moves{entries.data(), input_moves.size()}, offset{0} {
     }
 
     auto operator()(phase_e phase) noexcept {
@@ -46,14 +49,15 @@ struct move_picker_t {
         switch (phase) {
             case TT_MOVES: {
                 auto remaining_input_moves = input_moves.subspan(offset);
-                auto tail = std::ranges::partition(remaining_input_moves, [&](move_t move) { return move == best; });
-                auto count = std::distance(remaining_input_moves.begin(), tail.begin());
-                for (std::size_t i = 0; i < count; ++i) {
-                    remaining_moves[i] = {remaining_input_moves[i], {}};
+                auto found = std::ranges::find(remaining_input_moves, best);
+                if (found == remaining_input_moves.end()) {
+                    return std::ranges::subrange(remaining_moves.begin(), remaining_moves.begin());
                 }
-                auto result = std::ranges::subrange(remaining_moves.begin(), remaining_moves.begin() + count);
-                offset += count;
-                return result;
+
+                std::ranges::iter_swap(remaining_input_moves.begin(), found);
+                remaining_moves.front() = {remaining_input_moves.front(), {}};
+                ++offset;
+                return std::ranges::subrange(remaining_moves.begin(), remaining_moves.begin() + 1);
             }
             case GOOD_CAPTURE_MOVES: {
                 auto remaining_input_moves = input_moves.subspan(offset);
@@ -71,6 +75,25 @@ struct move_picker_t {
                 auto tail = std::ranges::partition(remaining_moves, [this](const entry_t& entry) { return entry.eval.see == 0 && position.is_exchange(entry.move); });
                 auto result = std::ranges::subrange(remaining_moves.begin(), tail.begin());
                 offset += std::distance(remaining_moves.begin(), tail.begin());
+                return result;
+            }
+            case KILLER_MOVES: {
+                std::size_t count = 0;
+                for (move_t killer : killer_moves) {
+                    if (killer == move_t{} || position.is_exchange(killer))
+                        continue;
+
+                    auto first = remaining_moves.begin() + count;
+                    auto found = std::ranges::find(std::ranges::subrange(first, remaining_moves.end()), killer, &entry_t::move);
+                    if (found == remaining_moves.end())
+                        continue;
+
+                    std::ranges::iter_swap(first, found);
+                    ++count;
+                }
+
+                auto result = std::ranges::subrange(remaining_moves.begin(), remaining_moves.begin() + count);
+                offset += count;
                 return result;
             }
             case QUIET_MOVES: {
@@ -95,6 +118,7 @@ private:
     move_t best;
     int height;
     std::span<move_t> input_moves;
+    std::array<move_t, 2> killer_moves;
     std::array<entry_t, position_t::MAX_MOVES_PER_PLY> entries;
     std::span<entry_t> moves;
     std::size_t offset;

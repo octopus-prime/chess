@@ -12,6 +12,7 @@ void test_move_picker() {
         history_t history{position};
         move_t best = "d2d4"_m;
         auto history_moves = { "e1d1"_m, "e1f1"_m };
+        std::array killers{"e1d1"_m, "e1f1"_m};
         int height = 5;
 
         std::array<move_t, position_t::MAX_MOVES_PER_PLY> buffer;
@@ -21,7 +22,7 @@ void test_move_picker() {
             history.put(move, height, 10);
         }
 
-        move_picker_t move_picker{position, history, best, height, moves};
+        move_picker_t move_picker{position, history, best, height, moves, killers};
         auto get_move = [](const auto& entry) { return entry.move; };
 
         auto tt_moves = move_picker(move_picker_t::TT_MOVES);
@@ -33,9 +34,11 @@ void test_move_picker() {
             return entry.eval.see == +100;
         }));
 
+        auto killer_moves = move_picker(move_picker_t::KILLER_MOVES);
+        ut::expect(std::ranges::equal(killer_moves | std::views::transform(get_move), killers));
+
         auto quiet_moves = move_picker(move_picker_t::QUIET_MOVES);
-        ut::expect(std::ranges::is_permutation(quiet_moves | std::views::transform(get_move) | std::views::take(2), history_moves));
-        ut::expect(std::ranges::is_permutation(quiet_moves | std::views::transform(get_move) | std::views::drop(2), std::initializer_list{"e1e2"_m, "e1f2"_m, "d2d3"_m, "e4c3"_m, "e4g5"_m, "e4g3"_m, "e4f2"_m}));
+        ut::expect(std::ranges::is_permutation(quiet_moves | std::views::transform(get_move), std::initializer_list{"e1e2"_m, "e1f2"_m, "d2d3"_m, "e4c3"_m, "e4g5"_m, "e4g3"_m, "e4f2"_m}));
         ut::expect(std::ranges::all_of(quiet_moves, [](const auto& entry) {
             return entry.eval.see == 0;
         }));

@@ -25,11 +25,14 @@ struct searcher_t {
     correction_t& correction;
     std::function<bool()> should_stop;
     statistics_t stats;
+    std::array<std::array<move_t, 2>, position_t::MAX_MOVES_PER_GAME> killer_moves{};
 
     void clear() noexcept {
         transposition.clear();
         history.clear();
         correction.clear();
+        for (auto& killers : killer_moves)
+            killers.fill(move_t{});
         stats.nodes = 0;
         stats.max_height = 0;
     }
@@ -182,7 +185,10 @@ struct searcher_t {
         if (moves.empty())
             return position.is_check() ? -30000 + height : 0;
 
-        move_picker_t move_picker{position, history, best, height, moves};
+        auto killers = height >= 0 && static_cast<std::size_t>(height) < killer_moves.size()
+            ? killer_moves[height]
+            : std::array<move_t, 2>{};
+        move_picker_t move_picker{position, history, best, height, moves, killers};
         size_t move_count = 0;
         bool pv_found = false;
         for (auto&& phase : move_picker_t::ALL) {
@@ -215,7 +221,15 @@ struct searcher_t {
 
                 if (score >= beta) {
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
-                    history.put(move, height, 6 * depth);
+                    history.put(move, height, 8 * depth);
+                    if (phase == move_picker_t::QUIET_MOVES && !position.is_exchange(move) &&
+                        height >= 0 && static_cast<std::size_t>(height) < killer_moves.size()) {
+                        auto& killers = killer_moves[height];
+                        if (killers[0] != move) {
+                            killers[1] = killers[0];
+                            killers[0] = move;
+                        }
+                    }
                     return beta;
                 }
 
