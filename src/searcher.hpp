@@ -86,7 +86,7 @@ struct searcher_t {
 
         if (stats.nodes > stats.next_test) {
             if (should_stop())
-                return alpha;
+                return -32100;
             stats.next_test += 1000;
         }
 
@@ -134,15 +134,15 @@ struct searcher_t {
             type_e lt = lm != move_t{} ? position.at(lm.to()).type() : NO_TYPE;
             int corr = correction.get(position.pawn_hash(), position.minor_hash(), position.major_hash(),
                                       position.get_side(), lt, lm.to());
-            eval = std::clamp(eval + corr, -29000, 29000);
+            eval = std::clamp(eval + 2 * corr, -29000, 29000);
         }
 
-        // Razoring
-        {
-            auto margin = 500 + 300 * depth * depth;
-            if (!is_pv && !position.is_check() && eval < alpha - margin && alpha < 29000 && eval > -29000)
-                return (*this)(alpha, beta, height);
-        }
+        // // Razoring
+        // {
+        //     auto margin = 500 + 300 * depth * depth;
+        //     if (!is_pv && !position.is_check() && eval < alpha - margin && alpha < 29000 && eval > -29000)
+        //         return (*this)(alpha, beta, height);
+        // }
 
         // Futility pruning
         {
@@ -155,6 +155,8 @@ struct searcher_t {
             int R = 2 + std::min(3, (depth - 1) / 3);
             position.make_null_move();
             int score = -(*this)(-beta, -beta + 1, height + 1, depth - 1 - R);
+            if (score == 32100)
+                return -32100;
             position.undo_null_move();
             if (score >= beta) {
                 score = (*this)(alpha, beta, height, depth - 1 - R);
@@ -207,6 +209,9 @@ struct searcher_t {
                     }
                 }
                 position.undo_move(move);
+
+                if (score == 32100)
+                return -32100;
 
                 if (score >= beta) {
                     transposition.put(position.hash(), move, beta, flag_t::LOWER, depth);
@@ -341,9 +346,8 @@ struct searcher_t {
         for (int iteration = 1; iteration <= depth; ++iteration) {
             int score = (*this)(-30000, 30000, 0, iteration);
             // int score = aspiration_window(score, iteration);
-            if (should_stop()) {
+            if (score == -32100)
                 break;
-            }
             auto t1 = Clock::now();
             auto time = duration_cast<as_floating_point>(t1 - t0).count();
             std::span<move_t> pv = extract_pv(pv_buffer, iteration);

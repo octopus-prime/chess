@@ -207,6 +207,10 @@ struct position_t {
         return by(PAWN).empty() && material[WHITE] <= 10300 && material[BLACK] <= 10300;
     }
 
+    bool is_exchange(move_t move) const noexcept {
+        return move.promotion() != NO_TYPE || at(move.to()).type() != NO_TYPE || move.to() == states.back().en_passant;
+    }
+
     bool check(move_t move) const noexcept {
         square king_square = by(~side, KING).front();
         square to = move.to();

@@ -11,20 +11,22 @@ enum flag_t : std::uint8_t {
 	//		EGTB
 };
 
+class transposition_t {
 struct entry_t {
-	uint32_t key;	//4
+		using key_t = std::tuple<uint16_t, uint16_t>;
+		key_t key{};		//2*2
+	// uint32_t key;	//4
 	move_t move;	//2
 	int16_t score;	//2
 	flag_t flag;	//1
 	int8_t	depth;	//1
 };
 
-static_assert(sizeof(entry_t) == 12);
+static_assert(sizeof(entry_t) == 10);
 
-class transposition_t {
-	constexpr static size_t BUCKET_SIZE = 64 / sizeof(entry_t);
+constexpr static size_t BUCKET_SIZE = 64 / sizeof(entry_t);
 
-	static_assert(BUCKET_SIZE == 5);
+	static_assert(BUCKET_SIZE == 6);
 
 	struct alignas(64) bucket_t {
 		entry_t entries[BUCKET_SIZE]{};
@@ -47,8 +49,8 @@ public:
     }
 
     void put(hash_t hash, move_t move, int16_t score, flag_t flag, int8_t depth) noexcept {
+		const entry_t::key_t key = std::make_tuple(uint16_t(hash >> 48), uint16_t(hash >> 32));
         bucket_t& bucket = buckets[hash % buckets.size()];
-		uint32_t key = static_cast<uint32_t>(hash);
 		entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);
 		if (entry == std::end(bucket.entries)) {
 			entry = std::ranges::min_element(bucket.entries, {}, &entry_t::depth);
@@ -58,8 +60,8 @@ public:
     }
 
     std::optional<entry_t> get(hash_t hash) const noexcept {
+		const entry_t::key_t key = std::make_tuple(uint16_t(hash >> 48), uint16_t(hash >> 32));
         const bucket_t& bucket = buckets[hash % buckets.size()];
-		uint32_t key = static_cast<uint32_t>(hash);
 		const entry_t* entry = std::ranges::find(bucket.entries, key, &entry_t::key);
 		if (entry == std::end(bucket.entries))
 			return std::nullopt;
