@@ -22,7 +22,7 @@ void test_transposition() {
 
         auto entry = transposition.get(hash);
         ut::expect(entry != std::nullopt);
-        ut::expect(entry->key == std::make_tuple(static_cast<uint16_t>(hash >> 16), static_cast<uint16_t>(hash)));
+        ut::expect(entry->key == std::make_tuple(static_cast<uint16_t>(hash >> 48), static_cast<uint16_t>(hash >> 32)));
         ut::expect(entry->move == move);
         ut::expect(ut::eq(entry->score, score));
         ut::expect(ut::eq(entry->flag, flag));

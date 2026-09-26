@@ -9,6 +9,7 @@ struct move_picker_t {
     enum phase_e {
         TT_MOVES,
         GOOD_CAPTURE_MOVES,
+        NEUTRAL_CAPTURE_MOVES,
         QUIET_MOVES,
         BAD_CAPTURE_MOVES
     };
@@ -20,29 +21,19 @@ struct move_picker_t {
         auto operator<=>(const eval_t& other) const noexcept = default;
     };
 
-    constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
+    struct entry_t {
+        move_t move;
+        eval_t eval;
+    };
 
-    move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> moves) noexcept
-        : position{position}, history{history}, best{best}, height{height}, moves{moves}, offset{0} {
+    constexpr static auto ALL = {TT_MOVES, GOOD_CAPTURE_MOVES, NEUTRAL_CAPTURE_MOVES, QUIET_MOVES, BAD_CAPTURE_MOVES};
+
+    move_picker_t(position_t& position, history_t& history, move_t best, int height, std::span<move_t> input_moves) noexcept
+        : position{position}, history{history}, best{best}, height{height}, input_moves{input_moves}, moves{entries.data(), input_moves.size()}, offset{0} {
     }
 
     auto operator()(phase_e phase) noexcept {
-        auto remaining_zip = std::views::zip(
-            moves.subspan(offset), 
-            std::span{evals}.subspan(offset)
-        );
-
-        auto get_move = [](const auto& t) static -> move_t {
-            return std::get<0>(t);
-        };
-
-        auto get_see = [](const auto& t) static -> int16_t {
-            return std::get<1>(t).see;
-        };
-
-        auto get_history = [](const auto& t) static -> uint16_t {
-            return std::get<1>(t).history;
-        };
+        auto remaining_moves = moves.subspan(offset);
 
         auto eval_see = [&](move_t move) -> int16_t {
             return position.see(move);
@@ -54,30 +45,45 @@ struct move_picker_t {
 
         switch (phase) {
             case TT_MOVES: {
-                auto tail = std::ranges::partition(remaining_zip, [&](move_t move) { return move == best; }, get_move);
-                auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
-                offset += std::distance(remaining_zip.begin(), tail.begin());
+                auto remaining_input_moves = input_moves.subspan(offset);
+                auto tail = std::ranges::partition(remaining_input_moves, [&](move_t move) { return move == best; });
+                auto count = std::distance(remaining_input_moves.begin(), tail.begin());
+                for (std::size_t i = 0; i < count; ++i) {
+                    remaining_moves[i] = {remaining_input_moves[i], {}};
+                }
+                auto result = std::ranges::subrange(remaining_moves.begin(), remaining_moves.begin() + count);
+                offset += count;
                 return result;
             }
             case GOOD_CAPTURE_MOVES: {
-                for (auto&& [move, eval] : remaining_zip) { eval.see = eval_see(move); }
-                auto tail = std::ranges::partition(remaining_zip, [](int16_t see) static { return see > 0; }, get_see);
-                auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
-                std::ranges::sort(result, std::greater<>{}, get_see);
-                offset += std::distance(remaining_zip.begin(), tail.begin());
+                auto remaining_input_moves = input_moves.subspan(offset);
+                for (std::size_t i = 0; i < remaining_moves.size(); ++i) {
+                    auto move = remaining_input_moves[i];
+                    remaining_moves[i] = {move, {eval_see(move), 0}};
+                }
+                auto tail = std::ranges::partition(remaining_moves, [](const entry_t& entry) { return entry.eval.see > 0; });
+                auto result = std::ranges::subrange(remaining_moves.begin(), tail.begin());
+                std::ranges::sort(result, std::greater<>{}, [](const entry_t& entry) { return entry.eval.see; });
+                offset += std::distance(remaining_moves.begin(), tail.begin());
+                return result;
+            }
+            case NEUTRAL_CAPTURE_MOVES: {
+                auto tail = std::ranges::partition(remaining_moves, [this](const entry_t& entry) { return entry.eval.see == 0 && position.is_exchange(entry.move); });
+                auto result = std::ranges::subrange(remaining_moves.begin(), tail.begin());
+                offset += std::distance(remaining_moves.begin(), tail.begin());
                 return result;
             }
             case QUIET_MOVES: {
-                auto tail = std::ranges::partition(remaining_zip, [](int16_t see) static { return see == 0; }, get_see);
-                auto result = std::ranges::subrange(remaining_zip.begin(), tail.begin());
-                for (auto&& [move, eval] : result) { eval.history = eval_history(move); }
-                std::ranges::sort(result, std::greater<>{}, get_history);
-                offset += std::distance(remaining_zip.begin(), tail.begin());
+                auto tail = std::ranges::partition(remaining_moves, [](const entry_t& entry) { return entry.eval.see == 0; });// && !position.is_exchange(entry.move); });
+                auto result = std::ranges::subrange(remaining_moves.begin(), tail.begin());
+                for (auto& entry : result) { entry.eval.history = eval_history(entry.move); }
+                std::ranges::sort(result, std::greater<>{}, [](const entry_t& entry) { return entry.eval.history; });
+                offset += std::distance(remaining_moves.begin(), tail.begin());
                 return result;
             }
             case BAD_CAPTURE_MOVES: {
-                auto result = std::ranges::subrange(remaining_zip.begin(), remaining_zip.end());
-                std::ranges::sort(result, std::greater<>{}, get_see);
+                auto result = std::ranges::subrange(remaining_moves.begin(), remaining_moves.end());
+                std::ranges::sort(result, std::greater<>{}, [](const entry_t& entry) { return entry.eval.see; });
                 return result;
             }
         }
@@ -88,7 +94,8 @@ private:
     history_t& history;
     move_t best;
     int height;
-    std::span<move_t> moves;
+    std::span<move_t> input_moves;
+    std::array<entry_t, position_t::MAX_MOVES_PER_PLY> entries;
+    std::span<entry_t> moves;
     std::size_t offset;
-    std::array<eval_t, position_t::MAX_MOVES_PER_PLY> evals;
 };

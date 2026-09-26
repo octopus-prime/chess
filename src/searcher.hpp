@@ -61,7 +61,7 @@ struct searcher_t {
 
         move_picker_t move_picker{position, history, move_t{}, height, moves};
 
-        for (auto&& type : {move_picker_t::GOOD_CAPTURE_MOVES/*, move_picker_t::QUIET_MOVES*/}) {
+        for (auto&& type : {move_picker_t::GOOD_CAPTURE_MOVES, move_picker_t::NEUTRAL_CAPTURE_MOVES}) {
         for (auto&& [move, gain] : move_picker(type)) {
             if (stand_pat + gain.see + 150 < alpha)
                 break;
